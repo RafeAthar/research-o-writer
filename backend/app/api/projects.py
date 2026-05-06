@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_db
 from app.deps import require_auth
 from app.models.project import EvidenceCard, OutlineNode, Project
+from app.models.source import Source
+from app.services.export import render_project_markdown
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -376,3 +379,49 @@ async def delete_evidence(
     ec = await _own_evidence(db, user_id, project_id, evidence_id)
     await db.delete(ec)
     await db.commit()
+
+
+# ---------- Export ----------
+
+
+@router.get("/{project_id}/export.md")
+async def export_project_markdown(
+    project_id: int,
+    user_id: int = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    project = await _own_project(db, user_id, project_id)
+    nodes = (
+        await db.execute(
+            select(OutlineNode).where(OutlineNode.project_id == project_id)
+        )
+    ).scalars().all()
+    evidence = (
+        await db.execute(
+            select(EvidenceCard)
+            .join(OutlineNode, OutlineNode.id == EvidenceCard.outline_node_id)
+            .where(OutlineNode.project_id == project_id)
+        )
+    ).scalars().all()
+
+    cited_ids = {ec.source_id for ec in evidence}
+    sources: list[Source] = []
+    if cited_ids:
+        sources = (
+            await db.execute(
+                select(Source).where(
+                    Source.id.in_(cited_ids), Source.user_id == user_id
+                )
+            )
+        ).scalars().all()
+    sources_by_id = {s.id: s for s in sources}
+
+    md = render_project_markdown(project, list(nodes), list(evidence), sources_by_id)
+    safe = "".join(c if c.isalnum() else "-" for c in project.title.lower()).strip("-") or "project"
+    return Response(
+        content=md,
+        media_type="text/markdown; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe}.md"',
+        },
+    )

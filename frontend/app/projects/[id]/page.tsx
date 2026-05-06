@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { api } from "@/lib/api";
+import { api, downloadAuthFile } from "@/lib/api";
 import type {
   EvidenceCard,
   OutlineNode,
@@ -171,9 +171,20 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
         <h1 className="mb-2 font-semibold">{project.title}</h1>
         <button
           onClick={() => addNode(null)}
-          className="mb-3 w-full rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-700"
+          className="mb-2 w-full rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-700"
         >
           + New section
+        </button>
+        <button
+          onClick={() =>
+            downloadAuthFile(
+              `/api/v1/projects/${projectId}/export.md`,
+              `${project.title}.md`,
+            ).catch((e) => setError(e instanceof Error ? e.message : String(e)))
+          }
+          className="mb-3 w-full rounded border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-200 dark:border-neutral-700 dark:hover:bg-neutral-800"
+        >
+          Export Markdown
         </button>
         {tree.length === 0 && <div className="text-xs text-neutral-500">No sections yet.</div>}
         <ul className="space-y-0.5">

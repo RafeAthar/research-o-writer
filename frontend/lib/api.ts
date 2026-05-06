@@ -42,3 +42,27 @@ export async function fetchAuthBlobUrl(path: string): Promise<string> {
   const blob = await res.blob();
   return URL.createObjectURL(blob);
 }
+
+/**
+ * Trigger a browser download of an authenticated GET endpoint. The browser's
+ * own download UI does not let us inject headers, so fetch + blob + anchor.
+ */
+export async function downloadAuthFile(path: string, fallbackName: string): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}${path}`, { headers: authHeaders() });
+  if (!res.ok) {
+    throw new Error(`download ${res.status}: ${await res.text().catch(() => "")}`);
+  }
+  let filename = fallbackName;
+  const cd = res.headers.get("Content-Disposition") ?? "";
+  const m = /filename="?([^"]+)"?/i.exec(cd);
+  if (m) filename = m[1];
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
