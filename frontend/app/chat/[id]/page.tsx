@@ -17,6 +17,7 @@ interface DisplayMessage {
   content: string;
   citations: ChatCitation[];
   passages?: ChatPassage[]; // for in-flight assistant messages
+  issues?: string[];
   streaming?: boolean;
   error?: string | null;
 }
@@ -111,6 +112,7 @@ export default function ChatDetailPage({ params }: { params: { id: string } }) {
                     ...x,
                     content: data.text,
                     citations: data.citations,
+                    issues: data.issues,
                     streaming: false,
                   }
                 : x,
@@ -211,6 +213,16 @@ function MessageBubble({ m }: { m: DisplayMessage }) {
           </div>
         )}
       </div>
+      {m.issues && m.issues.length > 0 && (
+        <div className="rounded border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300">
+          <div className="mb-1 font-medium">Citation issues</div>
+          <ul className="list-disc pl-5">
+            {m.issues.map((iss, i) => (
+              <li key={i}>{iss}</li>
+            ))}
+          </ul>
+        </div>
+      )}
       {(m.citations.length > 0 || (m.passages && m.passages.length > 0)) && (
         <CitationCards citations={m.citations} passages={m.passages ?? []} />
       )}

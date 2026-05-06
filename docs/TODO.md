@@ -117,19 +117,22 @@ Convention:
 
 ### 1.10 Export
 
-- [ ] Markdown export of outline + evidence
-- [ ] Citation rendering (Pandoc-friendly format with bibliography)
+- [x] Markdown export of outline + evidence
+- [x] Citation rendering (Pandoc-friendly format with bibliography)
 
 ### 1.11 Auth
 
-- [ ] Trivial single-user auth (env-based or local password)
-- [ ] All queries scoped by `user_id` (hardcoded but enforced)
+- [x] Trivial single-user auth (env-based or local password)
+- [x] All queries scoped by `user_id` (hardcoded but enforced)
 
 ### 1.12 Evaluation harness
 
-- [ ] Build initial eval set: ~50 hand-graded Q→passage pairs over 5–10 books
-- [ ] CLI to run eval: retrieval accuracy @K, citation correctness, refusal rate
-- [ ] Decision rule: no retrieval/prompt change merges without running eval
+- [~] Build initial eval set: ~50 hand-graded Q→passage pairs over 5–10 books
+      *(seeded with 14 entries against 3 synthetic articles; needs to grow as
+      real books are ingested)*
+- [x] CLI to run eval: retrieval accuracy @K, citation correctness, refusal rate
+- [x] Decision rule: no retrieval/prompt change merges without running eval
+      *(documented in docs/EVAL.md; CI hookup pending)*
 
 ### 1.13 Phase 1 exit checklist
 

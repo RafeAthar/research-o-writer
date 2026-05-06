@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { API_BASE_URL, AUTH_TOKEN, api } from "@/lib/api";
 import type { Source } from "@/lib/types";
 
+
 const STATUS_COLOR: Record<string, string> = {
   ready: "bg-green-100 text-green-800",
   failed: "bg-red-100 text-red-800",
@@ -93,6 +94,12 @@ export default function LibraryPage() {
       <header className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Library</h1>
         <div className="flex items-center gap-3">
+          <Link
+            href="/library/quotes"
+            className="rounded border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
+          >
+            Quote shelf
+          </Link>
           <input
             type="text"
             value={filter}

@@ -52,6 +52,16 @@ export interface Highlight {
   created_at: string;
 }
 
+export interface Quote {
+  id: number;
+  source_id: number;
+  chunk_id: number | null;
+  text: string;
+  citation: Record<string, unknown>;
+  note: string | null;
+  created_at: string;
+}
+
 export interface SearchHit {
   chunk_id: number;
   source_id: number;

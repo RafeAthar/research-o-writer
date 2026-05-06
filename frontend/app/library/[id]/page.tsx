@@ -97,14 +97,10 @@ export default function SourceDetailPage({ params }: { params: { id: string } })
     [sourceId],
   );
 
-  const saveSelection = useCallback(() => {
+  const _selectionInfo = useCallback(() => {
     const sel = window.getSelection();
     const text = sel?.toString().trim();
-    if (!text) {
-      alert("Select some text first.");
-      return;
-    }
-    // Try to attribute to a chunk by walking up to nearest [data-chunk-id].
+    if (!text) return null;
     let node: Node | null = sel?.anchorNode ?? null;
     let chunkId: number | null = null;
     while (node) {
@@ -114,8 +110,49 @@ export default function SourceDetailPage({ params }: { params: { id: string } })
       }
       node = node.parentNode;
     }
-    onSaveHighlight(text, chunkId, source?.source_format === "pdf" ? currentPage : null);
-  }, [onSaveHighlight, currentPage, source]);
+    return { text, chunkId };
+  }, []);
+
+  const saveSelection = useCallback(() => {
+    const info = _selectionInfo();
+    if (!info) {
+      alert("Select some text first.");
+      return;
+    }
+    onSaveHighlight(info.text, info.chunkId, source?.source_format === "pdf" ? currentPage : null);
+  }, [_selectionInfo, onSaveHighlight, currentPage, source]);
+
+  const saveToShelf = useCallback(async () => {
+    const info = _selectionInfo();
+    if (!info || !source) {
+      alert("Select some text first.");
+      return;
+    }
+    const note = prompt("Optional note:") ?? null;
+    const chunk = chunks?.find((c) => c.id === info.chunkId);
+    try {
+      await api("/api/v1/quotes", {
+        method: "POST",
+        body: JSON.stringify({
+          source_id: sourceId,
+          chunk_id: info.chunkId,
+          text: info.text,
+          note,
+          citation: {
+            source_title: source.title,
+            authors: source.authors,
+            year: source.year,
+            chapter_path: chunk?.chapter_path ?? [],
+            page_start: chunk?.page_start ?? (source.source_format === "pdf" ? currentPage : null),
+            page_end: chunk?.page_end ?? null,
+          },
+        }),
+      });
+      alert("Saved to quote shelf.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }, [_selectionInfo, source, sourceId, chunks, currentPage]);
 
   const onDeleteHighlight = useCallback(async (id: number) => {
     try {
@@ -179,9 +216,14 @@ export default function SourceDetailPage({ params }: { params: { id: string } })
         <div>
           <div className="mb-1 flex items-center justify-between text-xs uppercase tracking-wide text-neutral-500">
             <span>Highlights ({highlights.length})</span>
-            <button onClick={saveSelection} className="text-blue-600 hover:underline">
-              + Save
-            </button>
+            <div className="flex gap-2">
+              <button onClick={saveSelection} className="text-blue-600 hover:underline">
+                + Highlight
+              </button>
+              <button onClick={saveToShelf} className="text-blue-600 hover:underline">
+                + Shelf
+              </button>
+            </div>
           </div>
           <ul className="space-y-2">
             {highlights.map((h) => (

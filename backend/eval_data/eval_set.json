@@ -1,0 +1,88 @@
+{
+  "$comment": "Eval set for Research-o-Writer. Each entry is graded against the synthetic articles in eval_data/articles/. Replace or extend with entries from your real library as you ingest it. expected_text_substring is matched case-insensitively against retrieved chunk text; it should be a short, distinctive phrase from the answering paragraph.",
+  "entries": [
+    {
+      "id": "flow-challenge-skill",
+      "query": "What is the relationship between challenge and skill in the flow state?",
+      "expected_source_title": "Sample Article: Flow and the Optimal Experience",
+      "expected_chapter_path": ["2. The challenge–skill balance"],
+      "expected_text_substring": "balance between challenge and skill"
+    },
+    {
+      "id": "flow-anxiety-vs-boredom",
+      "query": "What happens when challenge greatly exceeds skill, and when skill greatly exceeds challenge?",
+      "expected_source_title": "Sample Article: Flow and the Optimal Experience",
+      "expected_text_substring": "the result is anxiety"
+    },
+    {
+      "id": "flow-self-observer",
+      "query": "What experiential feature is reported about the self during flow?",
+      "expected_source_title": "Sample Article: Flow and the Optimal Experience",
+      "expected_text_substring": "disappearance of the self-observer"
+    },
+    {
+      "id": "flow-blockers",
+      "query": "What are common conditions that block flow?",
+      "expected_source_title": "Sample Article: Flow and the Optimal Experience",
+      "expected_text_substring": "ambiguous goals"
+    },
+    {
+      "id": "zettel-origin",
+      "query": "Who is associated with the Zettelkasten method, and roughly how many cards did he keep?",
+      "expected_source_title": "Sample Article: The Zettelkasten Method",
+      "expected_text_substring": "Niklas Luhmann"
+    },
+    {
+      "id": "zettel-atomicity",
+      "query": "What does atomicity mean in the Zettelkasten method?",
+      "expected_source_title": "Sample Article: The Zettelkasten Method",
+      "expected_text_substring": "each card holds exactly one idea"
+    },
+    {
+      "id": "zettel-linking",
+      "query": "How are cards organized in a Zettelkasten?",
+      "expected_source_title": "Sample Article: The Zettelkasten Method",
+      "expected_text_substring": "directed graph"
+    },
+    {
+      "id": "zettel-not",
+      "query": "What is the Zettelkasten method not?",
+      "expected_source_title": "Sample Article: The Zettelkasten Method",
+      "expected_text_substring": "not a search engine"
+    },
+    {
+      "id": "wm-capacity",
+      "query": "Roughly how many items can working memory hold at once for most adults?",
+      "expected_source_title": "Sample Article: Working Memory and Reading Comprehension",
+      "expected_text_substring": "four to seven items"
+    },
+    {
+      "id": "wm-reading-as-assembly",
+      "query": "Why is reading more than character recognition?",
+      "expected_source_title": "Sample Article: Working Memory and Reading Comprehension",
+      "expected_text_substring": "active assembly"
+    },
+    {
+      "id": "wm-overload-sources",
+      "query": "What are common sources of working-memory overload during reading?",
+      "expected_source_title": "Sample Article: Working Memory and Reading Comprehension",
+      "expected_text_substring": "long sentences"
+    },
+    {
+      "id": "wm-mitigations",
+      "query": "What two mitigations from cognitive science help with working-memory overload while reading?",
+      "expected_source_title": "Sample Article: Working Memory and Reading Comprehension",
+      "expected_text_substring": "chunking and rehearsal"
+    },
+    {
+      "id": "no-answer-political",
+      "query": "What is the current minimum wage in California?",
+      "expected": "no_answer"
+    },
+    {
+      "id": "no-answer-celebrity",
+      "query": "Who won the FIFA World Cup in 2022?",
+      "expected": "no_answer"
+    }
+  ]
+}
