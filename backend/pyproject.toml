@@ -1,0 +1,69 @@
+[project]
+name = "research-o-writer-backend"
+version = "0.1.0"
+description = "Research-o-Writer backend API + workers"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "sqlalchemy[asyncio]>=2.0",
+    "asyncpg>=0.30",
+    "alembic>=1.14",
+    "pgvector>=0.3.6",
+    "python-multipart>=0.0.12",
+    "httpx>=0.27",
+    "anthropic>=0.39",
+    "boto3>=1.35",
+    "rq>=2.0",
+    "redis>=5.2",
+    "python-slugify>=8.0",
+    # Ingestion (1.3) — added now to keep one dep file
+    "pymupdf>=1.24",
+    "python-docx>=1.1",
+    "ebooklib>=0.18",
+    "beautifulsoup4>=4.12",
+    "lxml>=5.3",
+    "readability-lxml>=0.8.1",
+    "markdown-it-py>=3.0",
+    # Embeddings (1.4) — local
+    "sentence-transformers>=3.3",
+    "torch>=2.4",
+    "FlagEmbedding>=1.3",
+    # Misc
+    "tiktoken>=0.8",
+    "tenacity>=9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=6.0",
+    "ruff>=0.7",
+    "mypy>=1.13",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "RUF", "SIM"]
+ignore = ["E501"]  # line length handled by formatter
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]

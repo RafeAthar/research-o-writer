@@ -1,0 +1,47 @@
+# Local development
+.env
+.env.local
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+
+# Node
+node_modules/
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+.turbo/
+
+# Editors
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Storage / data
+data/
+storage/
+minio_data/
+postgres_data/
+redis_data/
+
+# Logs
+*.log
+logs/
+
+# Secrets / keys
+*.pem
+*.key
+secrets/
