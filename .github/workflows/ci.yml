@@ -45,10 +45,12 @@ jobs:
       - name: Install dependencies (lite)
         run: |
           pip install --upgrade pip
-          # Install without heavy ML deps to keep CI fast.
+          # Install without heavy ML deps (sentence-transformers/torch) to keep CI fast.
           pip install fastapi uvicorn pydantic pydantic-settings \
             'sqlalchemy[asyncio]' asyncpg alembic pgvector python-multipart \
             httpx anthropic boto3 rq redis python-slugify tiktoken tenacity \
+            pymupdf python-docx ebooklib beautifulsoup4 lxml readability-lxml \
+            markdown-it-py \
             pytest pytest-asyncio ruff
       - name: Lint
         run: ruff check .
