@@ -2,20 +2,30 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
 from app.deps import require_auth
-from app.models.source import Source, SourceStatus
+from app.models.source import Chunk, Source, SourceStatus, SourceStructure
 from app.services.parsers.dispatch import UnsupportedFormatError, detect_format
 from app.services.storage import Storage, content_addressed_key, sha256_hex
 from app.workers.ingest import ingest_source
 from app.workers.queue import get_queue
 
 router = APIRouter(prefix="/sources", tags=["sources"])
+
+_MIME_BY_FORMAT = {
+    "pdf": "application/pdf",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "epub": "application/epub+zip",
+    "html": "text/html; charset=utf-8",
+    "markdown": "text/markdown; charset=utf-8",
+    "text": "text/plain; charset=utf-8",
+}
 
 
 class SourceOut(BaseModel):
@@ -133,3 +143,101 @@ async def delete_source(
     Storage().delete(row.original_object_key)
     await db.delete(row)
     await db.commit()
+
+
+@router.get("/{source_id}/file")
+async def get_source_file(
+    source_id: int,
+    user_id: int = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    row = (
+        await db.execute(
+            select(Source).where(Source.id == source_id, Source.user_id == user_id)
+        )
+    ).scalar_one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="source not found")
+    data = Storage().get_bytes(row.original_object_key)
+    media_type = _MIME_BY_FORMAT.get(row.source_format, "application/octet-stream")
+    headers = {"Cache-Control": "private, max-age=3600"}
+    return Response(content=data, media_type=media_type, headers=headers)
+
+
+class StructureNodeOut(BaseModel):
+    id: int
+    parent_id: int | None
+    title: str
+    chapter_path: list[str]
+    depth: int
+    order_in_parent: int
+    page_start: int | None
+    page_end: int | None
+
+    class Config:
+        from_attributes = True
+
+
+@router.get("/{source_id}/structure", response_model=list[StructureNodeOut])
+async def get_source_structure(
+    source_id: int,
+    user_id: int = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+) -> list[StructureNodeOut]:
+    src = (
+        await db.execute(
+            select(Source).where(Source.id == source_id, Source.user_id == user_id)
+        )
+    ).scalar_one_or_none()
+    if not src:
+        raise HTTPException(status_code=404, detail="source not found")
+    rows = (
+        await db.execute(
+            select(SourceStructure)
+            .where(SourceStructure.source_id == source_id)
+            .order_by(SourceStructure.id)
+        )
+    ).scalars().all()
+    return [StructureNodeOut.model_validate(r) for r in rows]
+
+
+class ChunkOut(BaseModel):
+    id: int
+    source_id: int
+    chapter_path: list[str]
+    page_start: int | None
+    page_end: int | None
+    paragraph_index: int | None
+    char_start: int | None
+    char_end: int | None
+    text: str
+
+    class Config:
+        from_attributes = True
+
+
+@router.get("/{source_id}/chunks", response_model=list[ChunkOut])
+async def list_source_chunks(
+    source_id: int,
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=200, ge=1, le=1000),
+    user_id: int = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+) -> list[ChunkOut]:
+    src = (
+        await db.execute(
+            select(Source).where(Source.id == source_id, Source.user_id == user_id)
+        )
+    ).scalar_one_or_none()
+    if not src:
+        raise HTTPException(status_code=404, detail="source not found")
+    rows = (
+        await db.execute(
+            select(Chunk)
+            .where(Chunk.source_id == source_id)
+            .order_by(Chunk.id)
+            .offset(offset)
+            .limit(limit)
+        )
+    ).scalars().all()
+    return [ChunkOut.model_validate(r) for r in rows]
