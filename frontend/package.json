@@ -11,6 +11,7 @@
     "postinstall": "node scripts/copy-pdf-worker.mjs"
   },
   "dependencies": {
+    "@tiptap/core": "2.6.6",
     "@tiptap/extension-placeholder": "2.6.6",
     "@tiptap/pm": "2.6.6",
     "@tiptap/react": "2.6.6",

@@ -1,25 +1,37 @@
-"""Project → Markdown export.
+"""Project → Markdown / DOCX export.
 
-Output format choices (locked for Phase 1):
+Output format choices:
 - One Pandoc-friendly Markdown document per project.
 - Inline citations use Pandoc citeproc keys: ``[@srcN]`` where N is the
-  source_id. This lets the user run ``pandoc --citeproc -o out.docx`` later
-  with their CSL style of choice.
+  source_id.
 - A trailing ``# References`` section enumerates each cited source in plain
   Markdown so the file is also useful with no toolchain.
 - TipTap stores body content as HTML. Pandoc reads inline HTML inside Markdown
   fine; we emit it as a raw block instead of attempting a lossy HTML→MD pass.
+- DOCX is produced by piping the same Markdown plus a CSL-JSON bibliography
+  through ``pandoc --citeproc --csl=...``.
 """
 
 from __future__ import annotations
 
+import json
+import shutil
+import subprocess
+import tempfile
 from collections.abc import Iterable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from app.models.project import EvidenceCard, OutlineNode, Project
     from app.models.source import Source
+
+CSL_DIR = Path(__file__).parent / "csl"
+CSL_STYLES = {
+    "chicago": CSL_DIR / "chicago-author-date.csl",
+    "apa": CSL_DIR / "apa.csl",
+}
 
 
 @dataclass
@@ -147,3 +159,83 @@ def render_project_markdown(
         lines.append("")
 
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _csl_type(src: Source) -> str:
+    fmt = (src.source_format or "").lower()
+    if fmt in ("epub", "pdf") and not src.doi:
+        return "book"
+    if src.doi:
+        return "article-journal"
+    return "book"
+
+
+def render_csl_json(sources: Iterable[Source]) -> str:
+    """CSL-JSON bibliography for `pandoc --citeproc --bibliography=...`."""
+    items: list[dict] = []
+    for src in sources:
+        item: dict = {
+            "id": _cite_key(src.id),
+            "type": _csl_type(src),
+            "title": src.title,
+        }
+        if src.authors:
+            item["author"] = [{"literal": a} for a in src.authors]
+        if src.year:
+            item["issued"] = {"date-parts": [[int(src.year)]]}
+        if src.publisher:
+            item["publisher"] = src.publisher
+        if src.doi:
+            item["DOI"] = src.doi
+        if src.isbn:
+            item["ISBN"] = src.isbn
+        if src.language:
+            item["language"] = src.language
+        items.append(item)
+    return json.dumps(items, ensure_ascii=False, indent=2)
+
+
+def render_project_docx(
+    project: Project,
+    nodes: list[OutlineNode],
+    evidence: list[EvidenceCard],
+    sources_by_id: dict[int, Source],
+    *,
+    csl_style: str = "chicago",
+) -> bytes:
+    """Render the project to .docx via subprocess pandoc.
+
+    Raises RuntimeError if pandoc is not on PATH or the conversion fails.
+    """
+    pandoc = shutil.which("pandoc")
+    if not pandoc:
+        raise RuntimeError("pandoc binary not found on PATH; install pandoc to enable DOCX export")
+    csl_path = CSL_STYLES.get(csl_style)
+    if not csl_path or not csl_path.exists():
+        raise RuntimeError(f"unknown CSL style {csl_style!r}; choices: {sorted(CSL_STYLES)}")
+
+    md = render_project_markdown(project, nodes, evidence, sources_by_id)
+    csl_json = render_csl_json(sources_by_id.values())
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_dir = Path(tmp)
+        md_path = tmp_dir / "in.md"
+        bib_path = tmp_dir / "bib.json"
+        out_path = tmp_dir / "out.docx"
+        md_path.write_text(md, encoding="utf-8")
+        bib_path.write_text(csl_json, encoding="utf-8")
+        cmd = [
+            pandoc,
+            "--from=markdown",
+            "--to=docx",
+            "--citeproc",
+            f"--csl={csl_path}",
+            f"--bibliography={bib_path}",
+            "--standalone",
+            f"--output={out_path}",
+            str(md_path),
+        ]
+        proc = subprocess.run(cmd, capture_output=True, timeout=120)
+        if proc.returncode != 0:
+            raise RuntimeError(f"pandoc failed: {proc.stderr.decode('utf-8', 'replace')}")
+        return out_path.read_bytes()

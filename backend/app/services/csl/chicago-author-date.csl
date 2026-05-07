@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8"?>
+<style xmlns="http://purl.org/net/xbiblio/csl" class="in-text" version="1.0" demote-non-dropping-particle="display-and-sort" page-range-format="chicago">
+  <info>
+    <title>Chicago Manual of Style 17th edition (author-date) — minimal</title>
+    <id>http://research-o-writer.local/csl/chicago-author-date</id>
+    <link href="http://research-o-writer.local/csl/chicago-author-date" rel="self"/>
+    <category citation-format="author-date"/>
+    <category field="generic-base"/>
+    <updated>2026-05-07T00:00:00+00:00</updated>
+    <summary>Compact Chicago author-date for Research-o-Writer. Not exhaustive.</summary>
+  </info>
+  <macro name="author">
+    <names variable="author">
+      <name and="text" delimiter=", " name-as-sort-order="first"/>
+      <substitute>
+        <names variable="editor"/>
+        <text variable="title"/>
+      </substitute>
+    </names>
+  </macro>
+  <macro name="author-short">
+    <names variable="author">
+      <name form="short" and="text" delimiter=", "/>
+      <substitute>
+        <names variable="editor"/>
+        <text variable="title" form="short"/>
+      </substitute>
+    </names>
+  </macro>
+  <macro name="issued">
+    <choose>
+      <if variable="issued">
+        <date variable="issued">
+          <date-part name="year"/>
+        </date>
+      </if>
+      <else>
+        <text term="no date" form="short"/>
+      </else>
+    </choose>
+  </macro>
+  <macro name="locator">
+    <group prefix=", ">
+      <label variable="locator" form="short"/>
+      <text variable="locator"/>
+    </group>
+  </macro>
+  <macro name="title">
+    <choose>
+      <if type="book chapter" match="any">
+        <text variable="title" font-style="italic"/>
+      </if>
+      <else>
+        <text variable="title" quotes="true"/>
+      </else>
+    </choose>
+  </macro>
+  <macro name="container">
+    <choose>
+      <if type="chapter article-journal article-magazine article-newspaper" match="any">
+        <text variable="container-title" font-style="italic"/>
+      </if>
+    </choose>
+  </macro>
+  <macro name="publisher">
+    <group delimiter=": ">
+      <text variable="publisher-place"/>
+      <text variable="publisher"/>
+    </group>
+  </macro>
+  <citation et-al-min="4" et-al-use-first="1" disambiguate-add-year-suffix="true" disambiguate-add-names="true">
+    <layout prefix="(" suffix=")" delimiter="; ">
+      <group delimiter=" ">
+        <text macro="author-short"/>
+        <text macro="issued"/>
+      </group>
+      <text macro="locator"/>
+    </layout>
+  </citation>
+  <bibliography hanging-indent="true" et-al-min="11" et-al-use-first="7">
+    <sort>
+      <key macro="author"/>
+      <key macro="issued"/>
+    </sort>
+    <layout suffix=".">
+      <group delimiter=". ">
+        <text macro="author"/>
+        <text macro="issued"/>
+        <text macro="title"/>
+        <text macro="container"/>
+        <text macro="publisher"/>
+      </group>
+      <choose>
+        <if variable="DOI">
+          <text variable="DOI" prefix=" https://doi.org/"/>
+        </if>
+        <else-if variable="URL">
+          <text variable="URL" prefix=" "/>
+        </else-if>
+        <else-if variable="ISBN">
+          <text variable="ISBN" prefix=" ISBN "/>
+        </else-if>
+      </choose>
+    </layout>
+  </bibliography>
+</style>

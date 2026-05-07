@@ -156,3 +156,74 @@ export interface EvidenceCard {
   order_in_node: number;
   created_at: string;
 }
+
+export interface OutlineNodeVersion {
+  id: number;
+  outline_node_id: number;
+  title: string;
+  body_md: string | null;
+  label: string | null;
+  created_at: string;
+}
+
+export interface CoverageNode {
+  node_id: number;
+  title: string;
+  parent_id: number | null;
+  depth: number;
+  evidence_count: number;
+  source_ids: number[];
+}
+
+export interface CoverageSource {
+  source_id: number;
+  title: string;
+  evidence_count: number;
+}
+
+export interface CoverageOut {
+  nodes: CoverageNode[];
+  sources: CoverageSource[];
+  matrix: number[][];
+}
+
+export interface FlaggedSentence {
+  sentence: string;
+  char_start: number;
+  char_end: number;
+  supported: boolean;
+  matched_evidence_ids: number[];
+}
+
+export interface FlagSentencesOut {
+  sentences: FlaggedSentence[];
+}
+
+export interface StyleProfile {
+  id: number;
+  user_id: number;
+  project_id: number | null;
+  name: string;
+  samples: string[];
+  profile_md: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Verdict {
+  pair: [number, number];
+  verdict: "agree" | "disagree" | "unrelated" | "unclear";
+  rationale: string;
+}
+
+export interface ContradictionOut {
+  verdicts: Verdict[];
+  model: string | null;
+  error: string | null;
+}
+
+export interface SectionPassOut {
+  result_md: string;
+  model: string | null;
+  error: string | null;
+}

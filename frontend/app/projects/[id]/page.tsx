@@ -7,7 +7,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, downloadAuthFile } from "@/lib/api";
 import type {
   EvidenceCard,
+  FlagSentencesOut,
+  FlaggedSentence,
   OutlineNode,
+  OutlineNodeVersion,
   Project,
   SearchHit,
 } from "@/lib/types";
@@ -175,17 +178,49 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
         >
           + New section
         </button>
-        <button
-          onClick={() =>
-            downloadAuthFile(
-              `/api/v1/projects/${projectId}/export.md`,
-              `${project.title}.md`,
-            ).catch((e) => setError(e instanceof Error ? e.message : String(e)))
-          }
-          className="mb-3 w-full rounded border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-200 dark:border-neutral-700 dark:hover:bg-neutral-800"
+        <div className="mb-2 flex gap-1">
+          <button
+            onClick={() =>
+              downloadAuthFile(
+                `/api/v1/projects/${projectId}/export.md`,
+                `${project.title}.md`,
+              ).catch((e) => setError(e instanceof Error ? e.message : String(e)))
+            }
+            className="flex-1 rounded border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-200 dark:border-neutral-700 dark:hover:bg-neutral-800"
+          >
+            .md
+          </button>
+          <button
+            onClick={() =>
+              downloadAuthFile(
+                `/api/v1/projects/${projectId}/export.docx?csl=chicago`,
+                `${project.title}.docx`,
+              ).catch((e) => setError(e instanceof Error ? e.message : String(e)))
+            }
+            className="flex-1 rounded border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-200 dark:border-neutral-700 dark:hover:bg-neutral-800"
+            title="Chicago author-date"
+          >
+            .docx Chicago
+          </button>
+          <button
+            onClick={() =>
+              downloadAuthFile(
+                `/api/v1/projects/${projectId}/export.docx?csl=apa`,
+                `${project.title}.docx`,
+              ).catch((e) => setError(e instanceof Error ? e.message : String(e)))
+            }
+            className="flex-1 rounded border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-200 dark:border-neutral-700 dark:hover:bg-neutral-800"
+            title="APA 7th"
+          >
+            .docx APA
+          </button>
+        </div>
+        <Link
+          href={`/projects/${projectId}/coverage`}
+          className="mb-3 block w-full rounded border border-neutral-300 px-2 py-1 text-center text-xs hover:bg-neutral-200 dark:border-neutral-700 dark:hover:bg-neutral-800"
         >
-          Export Markdown
-        </button>
+          Coverage map
+        </Link>
         {tree.length === 0 && <div className="text-xs text-neutral-500">No sections yet.</div>}
         <ul className="space-y-0.5">
           {tree.map((n) => (
@@ -224,6 +259,19 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
               value={selected.body_md ?? ""}
               onChange={onSaveBody}
               placeholder="Write this section..."
+              evidence={selectedEvidence}
+            />
+            <DraftView
+              projectId={projectId}
+              nodeId={selected.id}
+              html={selected.body_md ?? ""}
+            />
+            <VersionsPanel
+              projectId={projectId}
+              nodeId={selected.id}
+              onRestored={async () => {
+                await reloadAll();
+              }}
             />
 
             <section>
@@ -361,6 +409,330 @@ function OutlineItem({
       )}
     </li>
   );
+}
+
+function htmlToText(html: string): string {
+  if (typeof document === "undefined") return html;
+  const tmp = document.createElement("div");
+  tmp.innerHTML = html;
+  return tmp.innerText || tmp.textContent || "";
+}
+
+function DraftView({
+  projectId,
+  nodeId,
+  html,
+}: {
+  projectId: number;
+  nodeId: number;
+  html: string;
+}) {
+  const [result, setResult] = useState<FlaggedSentence[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const text = useMemo(() => htmlToText(html), [html]);
+
+  const check = useCallback(async () => {
+    if (!text.trim() || busy) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await api<FlagSentencesOut>(
+        `/api/v1/projects/${projectId}/nodes/${nodeId}/flag-sentences`,
+        {
+          method: "POST",
+          body: JSON.stringify({ text }),
+        },
+      );
+      setResult(res.sentences);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [projectId, nodeId, text, busy]);
+
+  const unsupported = result?.filter((s) => !s.supported) ?? [];
+
+  return (
+    <section className="rounded border border-neutral-200 p-3 dark:border-neutral-800">
+      <div className="mb-2 flex items-center justify-between">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+          Draft check
+        </h3>
+        <button
+          onClick={check}
+          disabled={busy || !text.trim()}
+          className="rounded bg-neutral-800 px-3 py-1 text-xs text-white hover:bg-neutral-900 disabled:opacity-50 dark:bg-neutral-200 dark:text-neutral-900"
+        >
+          {busy ? "Checking..." : "Check unsupported sentences"}
+        </button>
+      </div>
+      {err && <div className="mb-2 text-xs text-red-700">{err}</div>}
+      {result && (
+        <>
+          <div className="mb-2 text-xs text-neutral-500">
+            {unsupported.length} of {result.length} sentence(s) flagged.
+            Heuristic match against pinned evidence quotes — not a model judgement.
+          </div>
+          <div className="space-y-1 text-sm leading-relaxed">
+            {result.map((s, i) => (
+              <span
+                key={i}
+                className={
+                  s.supported
+                    ? ""
+                    : "rounded bg-red-100 px-0.5 text-red-900 dark:bg-red-900/30 dark:text-red-100"
+                }
+                title={
+                  s.supported
+                    ? `matched evidence: ${s.matched_evidence_ids.join(", ") || "—"}`
+                    : "no overlap with pinned evidence on this section"
+                }
+              >
+                {s.sentence}{" "}
+              </span>
+            ))}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+function VersionsPanel({
+  projectId,
+  nodeId,
+  onRestored,
+}: {
+  projectId: number;
+  nodeId: number;
+  onRestored: () => Promise<void>;
+}) {
+  const [versions, setVersions] = useState<OutlineNodeVersion[]>([]);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [diffPair, setDiffPair] = useState<[number, number] | null>(null);
+  const [vCache, setVCache] = useState<Record<number, OutlineNodeVersion>>({});
+
+  const reload = useCallback(async () => {
+    try {
+      const rows = await api<OutlineNodeVersion[]>(
+        `/api/v1/projects/${projectId}/nodes/${nodeId}/versions`,
+      );
+      setVersions(rows);
+      setVCache(Object.fromEntries(rows.map((v) => [v.id, v])));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  }, [projectId, nodeId]);
+
+  useEffect(() => {
+    if (open) reload();
+  }, [open, reload]);
+
+  useEffect(() => {
+    setOpen(false);
+    setDiffPair(null);
+  }, [nodeId]);
+
+  const snapshot = useCallback(async () => {
+    if (busy) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const label = prompt("Optional label for this snapshot:") || null;
+      await api<OutlineNodeVersion>(
+        `/api/v1/projects/${projectId}/nodes/${nodeId}/versions`,
+        { method: "POST", body: JSON.stringify({ label }) },
+      );
+      await reload();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [projectId, nodeId, busy, reload]);
+
+  const restore = useCallback(
+    async (vid: number) => {
+      if (!confirm("Restore this version? Current content will be snapshotted first.")) return;
+      try {
+        await api<unknown>(
+          `/api/v1/projects/${projectId}/nodes/${nodeId}/versions/${vid}/restore`,
+          { method: "POST" },
+        );
+        await onRestored();
+        await reload();
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [projectId, nodeId, onRestored, reload],
+  );
+
+  return (
+    <section className="rounded border border-neutral-200 p-3 dark:border-neutral-800">
+      <div className="mb-2 flex items-center justify-between">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+          Version history
+        </h3>
+        <div className="flex gap-2">
+          <button
+            onClick={snapshot}
+            disabled={busy}
+            className="rounded border border-neutral-300 px-2 py-0.5 text-xs hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
+          >
+            Snapshot now
+          </button>
+          <button
+            onClick={() => setOpen((v) => !v)}
+            className="rounded border border-neutral-300 px-2 py-0.5 text-xs hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
+          >
+            {open ? "Hide" : "Show"}
+          </button>
+        </div>
+      </div>
+      {err && <div className="mb-2 text-xs text-red-700">{err}</div>}
+      {open && (
+        <ul className="space-y-1 text-xs">
+          {versions.length === 0 && (
+            <li className="text-neutral-500">No snapshots yet.</li>
+          )}
+          {versions.map((v, i) => (
+            <li
+              key={v.id}
+              className="flex items-center justify-between rounded border border-neutral-200 px-2 py-1 dark:border-neutral-800"
+            >
+              <div className="min-w-0 flex-1 truncate">
+                <span className="font-medium">v{versions.length - i}</span>{" "}
+                <span className="text-neutral-500">
+                  {new Date(v.created_at).toLocaleString()}
+                </span>
+                {v.label && (
+                  <span className="ml-1 text-neutral-700 dark:text-neutral-300">
+                    — {v.label}
+                  </span>
+                )}
+              </div>
+              <div className="flex gap-2 text-xs">
+                {versions[i + 1] && (
+                  <button
+                    onClick={() =>
+                      setDiffPair([versions[i + 1].id, v.id])
+                    }
+                    className="text-blue-600 hover:underline"
+                  >
+                    diff vs prev
+                  </button>
+                )}
+                <button
+                  onClick={() => restore(v.id)}
+                  className="text-blue-600 hover:underline"
+                >
+                  restore
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {diffPair && (
+        <DiffModal
+          a={vCache[diffPair[0]]}
+          b={vCache[diffPair[1]]}
+          onClose={() => setDiffPair(null)}
+        />
+      )}
+    </section>
+  );
+}
+
+function DiffModal({
+  a,
+  b,
+  onClose,
+}: {
+  a: OutlineNodeVersion | undefined;
+  b: OutlineNodeVersion | undefined;
+  onClose: () => void;
+}) {
+  if (!a || !b) return null;
+  const lines = simpleLineDiff(htmlToText(a.body_md ?? ""), htmlToText(b.body_md ?? ""));
+  return (
+    <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/40">
+      <div className="max-h-[80vh] w-[min(900px,90vw)] overflow-y-auto rounded bg-white p-4 dark:bg-neutral-950">
+        <div className="mb-2 flex items-center justify-between">
+          <div className="text-sm font-semibold">
+            Diff: {new Date(a.created_at).toLocaleString()} →{" "}
+            {new Date(b.created_at).toLocaleString()}
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded border border-neutral-300 px-2 py-0.5 text-xs hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
+          >
+            Close
+          </button>
+        </div>
+        <pre className="whitespace-pre-wrap rounded bg-neutral-50 p-3 font-mono text-xs leading-5 dark:bg-neutral-900">
+          {lines.map((l, i) => {
+            const cls =
+              l.kind === "+"
+                ? "bg-green-100 dark:bg-green-900/30"
+                : l.kind === "-"
+                ? "bg-red-100 dark:bg-red-900/30"
+                : "";
+            return (
+              <div key={i} className={cls}>
+                <span className="mr-2 select-none text-neutral-400">
+                  {l.kind === " " ? " " : l.kind}
+                </span>
+                {l.text}
+              </div>
+            );
+          })}
+        </pre>
+      </div>
+    </div>
+  );
+}
+
+function simpleLineDiff(
+  a: string,
+  b: string,
+): { kind: "+" | "-" | " "; text: string }[] {
+  const A = a.split(/\n/);
+  const B = b.split(/\n/);
+  // LCS-based line diff. n,m small for our case.
+  const n = A.length;
+  const m = B.length;
+  const dp: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i][j] = A[i] === B[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  const out: { kind: "+" | "-" | " "; text: string }[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < n && j < m) {
+    if (A[i] === B[j]) {
+      out.push({ kind: " ", text: A[i] });
+      i++;
+      j++;
+    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+      out.push({ kind: "-", text: A[i] });
+      i++;
+    } else {
+      out.push({ kind: "+", text: B[j] });
+      j++;
+    }
+  }
+  while (i < n) out.push({ kind: "-", text: A[i++] });
+  while (j < m) out.push({ kind: "+", text: B[j++] });
+  return out;
 }
 
 function EvidenceFinder({ onAdd }: { onAdd: (hit: SearchHit) => void }) {

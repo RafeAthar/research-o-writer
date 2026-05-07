@@ -17,9 +17,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
 from app.deps import require_auth
-from app.models.project import EvidenceCard, OutlineNode, Project
+from app.models.project import (
+    EvidenceCard,
+    OutlineNode,
+    OutlineNodeVersion,
+    Project,
+)
 from app.models.source import Source
-from app.services.export import render_project_markdown
+from app.services.export import (
+    CSL_STYLES,
+    render_project_docx,
+    render_project_markdown,
+)
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -384,17 +393,12 @@ async def delete_evidence(
 # ---------- Export ----------
 
 
-@router.get("/{project_id}/export.md")
-async def export_project_markdown(
-    project_id: int,
-    user_id: int = Depends(require_auth),
-    db: AsyncSession = Depends(get_db),
-) -> Response:
+async def _load_export_bundle(
+    db: AsyncSession, user_id: int, project_id: int
+) -> tuple[Project, list[OutlineNode], list[EvidenceCard], dict[int, Source]]:
     project = await _own_project(db, user_id, project_id)
     nodes = (
-        await db.execute(
-            select(OutlineNode).where(OutlineNode.project_id == project_id)
-        )
+        await db.execute(select(OutlineNode).where(OutlineNode.project_id == project_id))
     ).scalars().all()
     evidence = (
         await db.execute(
@@ -409,19 +413,418 @@ async def export_project_markdown(
     if cited_ids:
         sources = (
             await db.execute(
-                select(Source).where(
-                    Source.id.in_(cited_ids), Source.user_id == user_id
-                )
+                select(Source).where(Source.id.in_(cited_ids), Source.user_id == user_id)
             )
         ).scalars().all()
-    sources_by_id = {s.id: s for s in sources}
+    return project, list(nodes), list(evidence), {s.id: s for s in sources}
 
-    md = render_project_markdown(project, list(nodes), list(evidence), sources_by_id)
-    safe = "".join(c if c.isalnum() else "-" for c in project.title.lower()).strip("-") or "project"
+
+def _safe_filename(title: str) -> str:
+    safe = "".join(c if c.isalnum() else "-" for c in title.lower()).strip("-")
+    return safe or "project"
+
+
+@router.get("/{project_id}/export.md")
+async def export_project_markdown(
+    project_id: int,
+    user_id: int = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    project, nodes, evidence, sources_by_id = await _load_export_bundle(
+        db, user_id, project_id
+    )
+    md = render_project_markdown(project, nodes, evidence, sources_by_id)
+    safe = _safe_filename(project.title)
     return Response(
         content=md,
         media_type="text/markdown; charset=utf-8",
-        headers={
-            "Content-Disposition": f'attachment; filename="{safe}.md"',
-        },
+        headers={"Content-Disposition": f'attachment; filename="{safe}.md"'},
     )
+
+
+@router.get("/{project_id}/export.docx")
+async def export_project_docx(
+    project_id: int,
+    csl: str = "chicago",
+    user_id: int = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    if csl not in CSL_STYLES:
+        raise HTTPException(400, f"unknown csl style; choices: {sorted(CSL_STYLES)}")
+    project, nodes, evidence, sources_by_id = await _load_export_bundle(
+        db, user_id, project_id
+    )
+    try:
+        blob = render_project_docx(
+            project, nodes, evidence, sources_by_id, csl_style=csl
+        )
+    except RuntimeError as e:
+        raise HTTPException(503, str(e)) from e
+    safe = _safe_filename(project.title)
+    return Response(
+        content=blob,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{safe}.docx"'},
+    )
+
+
+# ---------- Versioned drafts ----------
+
+
+class VersionCreate(BaseModel):
+    label: str | None = Field(default=None, max_length=120)
+
+
+class VersionOut(BaseModel):
+    id: int
+    outline_node_id: int
+    title: str
+    body_md: str | None
+    label: str | None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+@router.post(
+    "/{project_id}/nodes/{node_id}/versions",
+    response_model=VersionOut,
+    status_code=201,
+)
+async def snapshot_node(
+    project_id: int,
+    node_id: int,
+    body: VersionCreate,
+    user_id: int = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+) -> VersionOut:
+    n = await _own_node(db, user_id, project_id, node_id)
+    v = OutlineNodeVersion(
+        outline_node_id=n.id,
+        title=n.title,
+        body_md=n.body_md,
+        label=body.label,
+    )
+    db.add(v)
+    await db.commit()
+    await db.refresh(v)
+    return VersionOut.model_validate(v)
+
+
+@router.get(
+    "/{project_id}/nodes/{node_id}/versions",
+    response_model=list[VersionOut],
+)
+async def list_versions(
+    project_id: int,
+    node_id: int,
+    user_id: int = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+) -> list[VersionOut]:
+    await _own_node(db, user_id, project_id, node_id)
+    rows = (
+        await db.execute(
+            select(OutlineNodeVersion)
+            .where(OutlineNodeVersion.outline_node_id == node_id)
+            .order_by(OutlineNodeVersion.created_at.desc(), OutlineNodeVersion.id.desc())
+        )
+    ).scalars().all()
+    return [VersionOut.model_validate(r) for r in rows]
+
+
+async def _own_version(
+    db: AsyncSession, user_id: int, project_id: int, node_id: int, version_id: int
+) -> OutlineNodeVersion:
+    await _own_node(db, user_id, project_id, node_id)
+    v = (
+        await db.execute(
+            select(OutlineNodeVersion).where(
+                OutlineNodeVersion.id == version_id,
+                OutlineNodeVersion.outline_node_id == node_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if not v:
+        raise HTTPException(404, "version not found")
+    return v
+
+
+@router.get(
+    "/{project_id}/nodes/{node_id}/versions/{version_id}",
+    response_model=VersionOut,
+)
+async def get_version(
+    project_id: int,
+    node_id: int,
+    version_id: int,
+    user_id: int = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+) -> VersionOut:
+    v = await _own_version(db, user_id, project_id, node_id, version_id)
+    return VersionOut.model_validate(v)
+
+
+class VersionRestoreOut(BaseModel):
+    restored_from: int
+    node: OutlineNodeOut
+
+
+@router.post(
+    "/{project_id}/nodes/{node_id}/versions/{version_id}/restore",
+    response_model=VersionRestoreOut,
+)
+async def restore_version(
+    project_id: int,
+    node_id: int,
+    version_id: int,
+    user_id: int = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+) -> VersionRestoreOut:
+    n = await _own_node(db, user_id, project_id, node_id)
+    v = await _own_version(db, user_id, project_id, node_id, version_id)
+    pre = OutlineNodeVersion(
+        outline_node_id=n.id,
+        title=n.title,
+        body_md=n.body_md,
+        label=f"auto-snapshot before restore of v{version_id}",
+    )
+    db.add(pre)
+    n.title = v.title
+    n.body_md = v.body_md
+    await db.commit()
+    await db.refresh(n)
+    return VersionRestoreOut(
+        restored_from=version_id, node=OutlineNodeOut.model_validate(n)
+    )
+
+
+# ---------- Coverage map ----------
+
+
+class CoverageNode(BaseModel):
+    node_id: int
+    title: str
+    parent_id: int | None
+    depth: int
+    evidence_count: int
+    source_ids: list[int]
+
+
+class CoverageSource(BaseModel):
+    source_id: int
+    title: str
+    evidence_count: int
+
+
+class CoverageOut(BaseModel):
+    nodes: list[CoverageNode]
+    sources: list[CoverageSource]
+    matrix: list[list[int]]  # rows = nodes order, cols = sources order
+
+
+@router.get("/{project_id}/coverage", response_model=CoverageOut)
+async def coverage_map(
+    project_id: int,
+    user_id: int = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+) -> CoverageOut:
+    await _own_project(db, user_id, project_id)
+    nodes = (
+        await db.execute(
+            select(OutlineNode)
+            .where(OutlineNode.project_id == project_id)
+            .order_by(
+                OutlineNode.parent_id.nullsfirst(),
+                OutlineNode.order_in_parent,
+                OutlineNode.id,
+            )
+        )
+    ).scalars().all()
+    evidence = (
+        await db.execute(
+            select(EvidenceCard)
+            .join(OutlineNode, OutlineNode.id == EvidenceCard.outline_node_id)
+            .where(OutlineNode.project_id == project_id)
+        )
+    ).scalars().all()
+
+    # Depth via parent traversal.
+    by_id = {n.id: n for n in nodes}
+
+    def _depth(n: OutlineNode) -> int:
+        d = 0
+        cur = n
+        while cur.parent_id and cur.parent_id in by_id:
+            cur = by_id[cur.parent_id]
+            d += 1
+            if d > 32:
+                break
+        return d
+
+    src_ids = sorted({ec.source_id for ec in evidence})
+    sources_rows: list[Source] = []
+    if src_ids:
+        sources_rows = (
+            await db.execute(
+                select(Source).where(
+                    Source.id.in_(src_ids), Source.user_id == user_id
+                )
+            )
+        ).scalars().all()
+    src_title = {s.id: s.title for s in sources_rows}
+
+    cov_nodes: list[CoverageNode] = []
+    src_counts: dict[int, int] = {sid: 0 for sid in src_ids}
+    matrix: list[list[int]] = []
+    src_index = {sid: i for i, sid in enumerate(src_ids)}
+
+    for n in nodes:
+        ev_for = [ec for ec in evidence if ec.outline_node_id == n.id]
+        sids = sorted({ec.source_id for ec in ev_for})
+        cov_nodes.append(
+            CoverageNode(
+                node_id=n.id,
+                title=n.title,
+                parent_id=n.parent_id,
+                depth=_depth(n),
+                evidence_count=len(ev_for),
+                source_ids=sids,
+            )
+        )
+        row = [0] * len(src_ids)
+        for ec in ev_for:
+            i = src_index.get(ec.source_id)
+            if i is not None:
+                row[i] += 1
+                src_counts[ec.source_id] = src_counts.get(ec.source_id, 0) + 1
+        matrix.append(row)
+
+    cov_sources = [
+        CoverageSource(
+            source_id=sid,
+            title=src_title.get(sid, f"source {sid}"),
+            evidence_count=src_counts.get(sid, 0),
+        )
+        for sid in src_ids
+    ]
+    return CoverageOut(nodes=cov_nodes, sources=cov_sources, matrix=matrix)
+
+
+# ---------- Unsupported-sentence flagging ----------
+
+
+class FlagSentencesIn(BaseModel):
+    text: str = Field(..., min_length=1)
+
+
+class FlaggedSentence(BaseModel):
+    sentence: str
+    char_start: int
+    char_end: int
+    supported: bool
+    matched_evidence_ids: list[int]
+
+
+class FlagSentencesOut(BaseModel):
+    sentences: list[FlaggedSentence]
+
+
+def _split_sentences(text: str) -> list[tuple[str, int, int]]:
+    """Naive sentence splitter: ., !, ? terminators. Good enough for draft view."""
+    out: list[tuple[str, int, int]] = []
+    n = len(text)
+    i = 0
+    start = 0
+    while i < n:
+        c = text[i]
+        if c in ".!?":
+            j = i + 1
+            while j < n and text[j] in ".!?\"'”’)":
+                j += 1
+            sent = text[start:j].strip()
+            if sent:
+                left = start + (len(text[start:j]) - len(text[start:j].lstrip()))
+                out.append((sent, left, j))
+            start = j
+            i = j
+            while start < n and text[start] in " \t\n\r":
+                start += 1
+            i = start
+        else:
+            i += 1
+    if start < n:
+        sent = text[start:].strip()
+        if sent:
+            left = start + (len(text[start:]) - len(text[start:].lstrip()))
+            out.append((sent, left, n))
+    return out
+
+
+def _normalize(s: str) -> str:
+    return " ".join(s.lower().split())
+
+
+@router.post(
+    "/{project_id}/nodes/{node_id}/flag-sentences",
+    response_model=FlagSentencesOut,
+)
+async def flag_sentences(
+    project_id: int,
+    node_id: int,
+    body: FlagSentencesIn,
+    user_id: int = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+) -> FlagSentencesOut:
+    """Heuristic check: a sentence is 'supported' if it overlaps non-trivially
+    with any pinned evidence quote on this node. Anti-hallucination guardrail
+    for the draft view; LLM-grade verification can replace this later.
+    """
+    n = await _own_node(db, user_id, project_id, node_id)
+    cards = (
+        await db.execute(
+            select(EvidenceCard).where(EvidenceCard.outline_node_id == n.id)
+        )
+    ).scalars().all()
+
+    quotes = [(ec.id, _normalize(ec.quote_text)) for ec in cards]
+    sents = _split_sentences(body.text)
+    out: list[FlaggedSentence] = []
+    for sent, cs, ce in sents:
+        norm = _normalize(sent)
+        if len(norm) < 12:
+            out.append(
+                FlaggedSentence(
+                    sentence=sent,
+                    char_start=cs,
+                    char_end=ce,
+                    supported=True,
+                    matched_evidence_ids=[],
+                )
+            )
+            continue
+        toks = [t for t in norm.split() if len(t) > 3]
+        matched: list[int] = []
+        for ec_id, qnorm in quotes:
+            if not qnorm:
+                continue
+            phrase_hit = any(
+                " ".join(toks[i : i + 4]) and " ".join(toks[i : i + 4]) in qnorm
+                for i in range(max(0, len(toks) - 3))
+            )
+            if phrase_hit:
+                matched.append(ec_id)
+                continue
+            overlap = sum(1 for t in set(toks) if t in qnorm)
+            if toks and overlap / max(1, len(set(toks))) >= 0.5:
+                matched.append(ec_id)
+        out.append(
+            FlaggedSentence(
+                sentence=sent,
+                char_start=cs,
+                char_end=ce,
+                supported=bool(matched),
+                matched_evidence_ids=matched,
+            )
+        )
+    return FlagSentencesOut(sentences=out)

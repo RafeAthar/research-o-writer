@@ -78,3 +78,39 @@ class EvidenceCard(Base, TimestampMixin):
     order_in_node: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     node: Mapped[OutlineNode] = relationship(back_populates="evidence")
+
+
+class OutlineNodeVersion(Base, TimestampMixin):
+    """A snapshot of an outline node's title + body, for history & diff view."""
+
+    __tablename__ = "outline_node_versions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    outline_node_id: Mapped[int] = mapped_column(
+        ForeignKey("outline_nodes.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    title: Mapped[str] = mapped_column(String(512), nullable=False)
+    body_md: Mapped[str | None] = mapped_column(Text, nullable=True)
+    label: Mapped[str | None] = mapped_column(String(120), nullable=True)
+
+
+class StyleProfile(Base, TimestampMixin):
+    """A per-user (optionally per-project) style profile distilled from past writing.
+
+    `samples` holds the raw text excerpts used to build the profile;
+    `profile_md` is the generated style description injected into chat /
+    draft prompts when the project has a profile.
+    """
+
+    __tablename__ = "style_profiles"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    project_id: Mapped[int | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False, default="default")
+    samples: Mapped[list[str]] = mapped_column(JSONB, default=list, nullable=False)
+    profile_md: Mapped[str | None] = mapped_column(Text, nullable=True)

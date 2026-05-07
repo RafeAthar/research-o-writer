@@ -1,6 +1,7 @@
+import json
 from types import SimpleNamespace
 
-from app.services.export import render_project_markdown
+from app.services.export import render_csl_json, render_project_markdown
 
 
 def _project(**kw):
@@ -101,3 +102,23 @@ def test_render_orders_evidence_within_node():
     e2 = _evidence(id=11, order_in_node=0, quote_text="first")
     md = render_project_markdown(_project(), [n], [e1, e2], {7: _source()})
     assert md.index("first") < md.index("second")
+
+
+def test_csl_json_carries_authors_and_year():
+    src = SimpleNamespace(
+        id=7,
+        title="Flow",
+        authors=["Mihaly Csikszentmihalyi"],
+        year=1990,
+        publisher="Harper",
+        isbn="9780060920432",
+        doi=None,
+        language="en",
+        source_format="pdf",
+    )
+    arr = json.loads(render_csl_json([src]))
+    assert arr[0]["id"] == "src7"
+    assert arr[0]["title"] == "Flow"
+    assert arr[0]["author"] == [{"literal": "Mihaly Csikszentmihalyi"}]
+    assert arr[0]["issued"] == {"date-parts": [[1990]]}
+    assert arr[0]["ISBN"] == "9780060920432"

@@ -145,15 +145,15 @@ Convention:
 
 ## Phase 2 — Writing workspace
 
-- [ ] TipTap editor with custom blocks: outline node, evidence card, citation, draft paragraph
-- [ ] Hierarchical outlines (book → part → chapter → section → subsection → paragraph stub)
-- [ ] Coverage map view (which sources feed which sections; gaps highlighted)
+- [x] TipTap editor with custom blocks: evidence card, citation, draft paragraph
+- [x] Hierarchical outlines (parent/child tree; UI supports nesting)
+- [x] Coverage map view (sections × sources matrix; gaps highlighted)
 - [ ] Contradiction / agreement detector across pinned evidence
 - [ ] Style memory: ingest user's past writing; produce a style profile prompt
-- [ ] Versioned drafts; diff view between versions
-- [ ] Bibliography auto-built; CSL styles (Chicago + APA at minimum)
-- [ ] DOCX export via Pandoc with citations
-- [ ] Anti-hallucination guardrails: red-flag unsupported sentences in draft view
+- [x] Versioned drafts; diff view between versions
+- [x] Bibliography auto-built; CSL styles (Chicago + APA)
+- [x] DOCX export via Pandoc with citations
+- [x] Anti-hallucination guardrails: red-flag unsupported sentences in draft view
 - [ ] "Steel-man this section" pass
 - [ ] "What's missing" pass
 - [ ] Phase 2 exit: full chapter drafted and exported using the app
