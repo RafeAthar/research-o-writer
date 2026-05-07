@@ -148,14 +148,15 @@ Convention:
 - [x] TipTap editor with custom blocks: evidence card, citation, draft paragraph
 - [x] Hierarchical outlines (parent/child tree; UI supports nesting)
 - [x] Coverage map view (sections × sources matrix; gaps highlighted)
-- [ ] Contradiction / agreement detector across pinned evidence
-- [ ] Style memory: ingest user's past writing; produce a style profile prompt
+- [x] Contradiction / agreement detector across pinned evidence
+- [x] Style memory: ingest user's past writing; produce a style profile prompt
+      *(per-project; auto-injected into project-scoped chat system prompt)*
 - [x] Versioned drafts; diff view between versions
 - [x] Bibliography auto-built; CSL styles (Chicago + APA)
 - [x] DOCX export via Pandoc with citations
 - [x] Anti-hallucination guardrails: red-flag unsupported sentences in draft view
-- [ ] "Steel-man this section" pass
-- [ ] "What's missing" pass
+- [x] "Steel-man this section" pass
+- [x] "What's missing" pass
 - [ ] Phase 2 exit: full chapter drafted and exported using the app
 
 ---

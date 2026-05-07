@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { api, downloadAuthFile } from "@/lib/api";
 import type {
+  ContradictionOut,
   EvidenceCard,
   FlagSentencesOut,
   FlaggedSentence,
@@ -13,6 +14,8 @@ import type {
   OutlineNodeVersion,
   Project,
   SearchHit,
+  SectionPassOut,
+  Verdict,
 } from "@/lib/types";
 
 const TipTapEditor = dynamic(() => import("@/components/TipTapEditor"), { ssr: false });
@@ -217,9 +220,15 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
         </div>
         <Link
           href={`/projects/${projectId}/coverage`}
-          className="mb-3 block w-full rounded border border-neutral-300 px-2 py-1 text-center text-xs hover:bg-neutral-200 dark:border-neutral-700 dark:hover:bg-neutral-800"
+          className="mb-1 block w-full rounded border border-neutral-300 px-2 py-1 text-center text-xs hover:bg-neutral-200 dark:border-neutral-700 dark:hover:bg-neutral-800"
         >
           Coverage map
+        </Link>
+        <Link
+          href={`/projects/${projectId}/style`}
+          className="mb-3 block w-full rounded border border-neutral-300 px-2 py-1 text-center text-xs hover:bg-neutral-200 dark:border-neutral-700 dark:hover:bg-neutral-800"
+        >
+          Style memory
         </Link>
         {tree.length === 0 && <div className="text-xs text-neutral-500">No sections yet.</div>}
         <ul className="space-y-0.5">
@@ -265,6 +274,12 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
               projectId={projectId}
               nodeId={selected.id}
               html={selected.body_md ?? ""}
+            />
+            <SectionActions projectId={projectId} nodeId={selected.id} />
+            <ContradictionsPanel
+              projectId={projectId}
+              nodeId={selected.id}
+              evidence={selectedEvidence}
             />
             <VersionsPanel
               projectId={projectId}
@@ -733,6 +748,186 @@ function simpleLineDiff(
   while (i < n) out.push({ kind: "-", text: A[i++] });
   while (j < m) out.push({ kind: "+", text: B[j++] });
   return out;
+}
+
+function SectionActions({
+  projectId,
+  nodeId,
+}: {
+  projectId: number;
+  nodeId: number;
+}) {
+  const [busy, setBusy] = useState<null | "steel" | "miss">(null);
+  const [out, setOut] = useState<{ kind: string; result: SectionPassOut } | null>(null);
+
+  const run = async (kind: "steel" | "miss") => {
+    setBusy(kind);
+    setOut(null);
+    try {
+      const path = kind === "steel" ? "steel-man" : "whats-missing";
+      const res = await api<SectionPassOut>(
+        `/api/v1/projects/${projectId}/nodes/${nodeId}/${path}`,
+        { method: "POST" },
+      );
+      setOut({ kind, result: res });
+    } catch (e) {
+      setOut({
+        kind,
+        result: {
+          result_md: "",
+          model: null,
+          error: e instanceof Error ? e.message : String(e),
+        },
+      });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <section className="rounded border border-neutral-200 p-3 dark:border-neutral-800">
+      <div className="mb-2 flex items-center justify-between">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+          Section passes
+        </h3>
+        <div className="flex gap-2">
+          <button
+            onClick={() => run("steel")}
+            disabled={!!busy}
+            className="rounded border border-neutral-300 px-2 py-0.5 text-xs hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
+          >
+            {busy === "steel" ? "Working…" : "Steel-man"}
+          </button>
+          <button
+            onClick={() => run("miss")}
+            disabled={!!busy}
+            className="rounded border border-neutral-300 px-2 py-0.5 text-xs hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
+          >
+            {busy === "miss" ? "Working…" : "What's missing"}
+          </button>
+        </div>
+      </div>
+      {out && (
+        <div className="rounded bg-neutral-50 p-3 text-sm dark:bg-neutral-900">
+          {out.result.error ? (
+            <div className="text-red-700">{out.result.error}</div>
+          ) : (
+            <pre className="whitespace-pre-wrap font-sans">
+              {out.result.result_md}
+            </pre>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ContradictionsPanel({
+  projectId,
+  nodeId,
+  evidence,
+}: {
+  projectId: number;
+  nodeId: number;
+  evidence: EvidenceCard[];
+}) {
+  const [busy, setBusy] = useState(false);
+  const [verdicts, setVerdicts] = useState<Verdict[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const byId = useMemo(() => {
+    const m: Record<number, EvidenceCard> = {};
+    evidence.forEach((e) => (m[e.id] = e));
+    return m;
+  }, [evidence]);
+
+  const run = async () => {
+    if (busy || evidence.length < 2) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await api<ContradictionOut>(
+        `/api/v1/projects/${projectId}/nodes/${nodeId}/contradictions`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            evidence_ids: evidence.map((e) => e.id),
+          }),
+        },
+      );
+      if (res.error) setErr(res.error);
+      setVerdicts(res.verdicts);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const colorFor = (v: string) =>
+    v === "agree"
+      ? "bg-green-100 text-green-900 dark:bg-green-900/30 dark:text-green-100"
+      : v === "disagree"
+      ? "bg-red-100 text-red-900 dark:bg-red-900/30 dark:text-red-100"
+      : v === "unclear"
+      ? "bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-100"
+      : "bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300";
+
+  return (
+    <section className="rounded border border-neutral-200 p-3 dark:border-neutral-800">
+      <div className="mb-2 flex items-center justify-between">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+          Cross-evidence check
+        </h3>
+        <button
+          onClick={run}
+          disabled={busy || evidence.length < 2}
+          className="rounded bg-neutral-800 px-3 py-1 text-xs text-white hover:bg-neutral-900 disabled:opacity-50 dark:bg-neutral-200 dark:text-neutral-900"
+          title={
+            evidence.length < 2
+              ? "Pin at least two pieces of evidence first"
+              : "Compare all pinned evidence pairwise"
+          }
+        >
+          {busy ? "Comparing…" : "Compare evidence"}
+        </button>
+      </div>
+      {err && <div className="mb-2 text-xs text-red-700">{err}</div>}
+      {verdicts && verdicts.length === 0 && (
+        <div className="text-xs text-neutral-500">No verdicts returned.</div>
+      )}
+      {verdicts && verdicts.length > 0 && (
+        <ul className="space-y-1 text-xs">
+          {verdicts.map((v, i) => {
+            const a = byId[v.pair[0]];
+            const b = byId[v.pair[1]];
+            return (
+              <li
+                key={i}
+                className="rounded border border-neutral-200 p-2 dark:border-neutral-800"
+              >
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`rounded px-1.5 py-0.5 font-medium uppercase ${colorFor(v.verdict)}`}
+                  >
+                    {v.verdict}
+                  </span>
+                  <span className="truncate text-neutral-500">
+                    {a ? (a.citation.source_title as string) : `#${v.pair[0]}`} ↔{" "}
+                    {b ? (b.citation.source_title as string) : `#${v.pair[1]}`}
+                  </span>
+                </div>
+                {v.rationale && (
+                  <div className="mt-1 text-neutral-700 dark:text-neutral-300">
+                    {v.rationale}
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
 }
 
 function EvidenceFinder({ onAdd }: { onAdd: (hit: SearchHit) => void }) {

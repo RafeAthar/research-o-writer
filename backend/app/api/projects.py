@@ -7,6 +7,7 @@ Each node may have EvidenceCards: pinned quotes from sources with citation metad
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -22,12 +23,19 @@ from app.models.project import (
     OutlineNode,
     OutlineNodeVersion,
     Project,
+    StyleProfile,
 )
 from app.models.source import Source
 from app.services.export import (
     CSL_STYLES,
     render_project_docx,
     render_project_markdown,
+)
+from app.services.writing_passes import (
+    detect_contradictions,
+    generate_style_profile,
+    steel_man_section,
+    whats_missing_section,
 )
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -828,3 +836,243 @@ async def flag_sentences(
             )
         )
     return FlagSentencesOut(sentences=out)
+
+
+# ---------- Style profile (per-project) ----------
+
+
+class StyleProfileOut(BaseModel):
+    id: int
+    user_id: int
+    project_id: int | None
+    name: str
+    samples: list[str]
+    profile_md: str | None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class StyleProfileWrite(BaseModel):
+    name: str = "default"
+    samples: list[str] = Field(default_factory=list)
+    profile_md: str | None = None
+
+
+async def _project_style(
+    db: AsyncSession, user_id: int, project_id: int
+) -> StyleProfile | None:
+    return (
+        await db.execute(
+            select(StyleProfile).where(
+                StyleProfile.user_id == user_id,
+                StyleProfile.project_id == project_id,
+            )
+        )
+    ).scalar_one_or_none()
+
+
+@router.get("/{project_id}/style", response_model=StyleProfileOut | None)
+async def get_style(
+    project_id: int,
+    user_id: int = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+) -> StyleProfileOut | None:
+    await _own_project(db, user_id, project_id)
+    sp = await _project_style(db, user_id, project_id)
+    return StyleProfileOut.model_validate(sp) if sp else None
+
+
+@router.put("/{project_id}/style", response_model=StyleProfileOut)
+async def upsert_style(
+    project_id: int,
+    body: StyleProfileWrite,
+    user_id: int = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+) -> StyleProfileOut:
+    await _own_project(db, user_id, project_id)
+    sp = await _project_style(db, user_id, project_id)
+    if sp is None:
+        sp = StyleProfile(
+            user_id=user_id,
+            project_id=project_id,
+            name=body.name,
+            samples=body.samples,
+            profile_md=body.profile_md,
+        )
+        db.add(sp)
+    else:
+        sp.name = body.name
+        sp.samples = body.samples
+        if body.profile_md is not None:
+            sp.profile_md = body.profile_md
+    await db.commit()
+    await db.refresh(sp)
+    return StyleProfileOut.model_validate(sp)
+
+
+@router.delete("/{project_id}/style", status_code=204)
+async def delete_style(
+    project_id: int,
+    user_id: int = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    await _own_project(db, user_id, project_id)
+    sp = await _project_style(db, user_id, project_id)
+    if sp:
+        await db.delete(sp)
+        await db.commit()
+
+
+@router.post("/{project_id}/style/generate", response_model=StyleProfileOut)
+async def generate_style(
+    project_id: int,
+    user_id: int = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+) -> StyleProfileOut:
+    """Run the LLM style-distillation pass over the saved samples."""
+    await _own_project(db, user_id, project_id)
+    sp = await _project_style(db, user_id, project_id)
+    if not sp or not sp.samples:
+        raise HTTPException(400, "no samples saved; PUT /style with samples first")
+    try:
+        profile_md = await generate_style_profile(sp.samples)
+    except Exception as e:  # surface upstream failure
+        raise HTTPException(503, f"style generation failed: {e}") from e
+    sp.profile_md = profile_md.strip()
+    await db.commit()
+    await db.refresh(sp)
+    return StyleProfileOut.model_validate(sp)
+
+
+# ---------- Contradiction detector ----------
+
+
+class ContradictionIn(BaseModel):
+    evidence_ids: list[int] = Field(default_factory=list)
+
+
+class VerdictOut(BaseModel):
+    pair: tuple[int, int]
+    verdict: str
+    rationale: str
+
+
+class ContradictionOut(BaseModel):
+    verdicts: list[VerdictOut]
+    error: str | None = None
+
+
+@router.post(
+    "/{project_id}/nodes/{node_id}/contradictions",
+    response_model=ContradictionOut,
+)
+async def contradictions(
+    project_id: int,
+    node_id: int,
+    body: ContradictionIn,
+    user_id: int = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+) -> ContradictionOut:
+    await _own_node(db, user_id, project_id, node_id)
+    q = select(EvidenceCard).where(EvidenceCard.outline_node_id == node_id)
+    if body.evidence_ids:
+        q = q.where(EvidenceCard.id.in_(body.evidence_ids))
+    cards = (await db.execute(q)).scalars().all()
+    if len(cards) < 2:
+        return ContradictionOut(verdicts=[])
+    quotes = [
+        (
+            ec.id,
+            (ec.citation or {}).get("source_title") or f"source {ec.source_id}",
+            ec.quote_text,
+        )
+        for ec in cards
+    ]
+    try:
+        results = await detect_contradictions(quotes)
+    except Exception as e:
+        return ContradictionOut(verdicts=[], error=str(e)[:300])
+    return ContradictionOut(
+        verdicts=[
+            VerdictOut(pair=v.pair, verdict=v.verdict, rationale=v.rationale)
+            for v in results
+        ]
+    )
+
+
+# ---------- Steel-man + What's-missing ----------
+
+
+class SectionPassOut(BaseModel):
+    result_md: str
+    error: str | None = None
+
+
+def _evidence_blob(cards: list[EvidenceCard]) -> str:
+    parts: list[str] = []
+    for ec in cards:
+        cite = ec.citation or {}
+        parts.append(
+            f"[@src{ec.source_id}] ({cite.get('source_title') or 'source'})\n{ec.quote_text.strip()}"
+        )
+    return "\n\n".join(parts)
+
+
+def _strip_html(html: str) -> str:
+    text = re.sub(r"<[^>]+>", " ", html or "")
+    return re.sub(r"\s+", " ", text).strip()
+
+
+async def _section_pass(
+    db: AsyncSession,
+    user_id: int,
+    project_id: int,
+    node_id: int,
+    runner,
+) -> SectionPassOut:
+    n = await _own_node(db, user_id, project_id, node_id)
+    cards = (
+        await db.execute(
+            select(EvidenceCard)
+            .where(EvidenceCard.outline_node_id == node_id)
+            .order_by(EvidenceCard.order_in_node, EvidenceCard.id)
+        )
+    ).scalars().all()
+    try:
+        out = await runner(
+            section_title=n.title,
+            draft_text=_strip_html(n.body_md or ""),
+            evidence_blob=_evidence_blob(list(cards)),
+        )
+    except Exception as e:
+        return SectionPassOut(result_md="", error=str(e)[:300])
+    return SectionPassOut(result_md=out)
+
+
+@router.post(
+    "/{project_id}/nodes/{node_id}/steel-man",
+    response_model=SectionPassOut,
+)
+async def steel_man(
+    project_id: int,
+    node_id: int,
+    user_id: int = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+) -> SectionPassOut:
+    return await _section_pass(db, user_id, project_id, node_id, steel_man_section)
+
+
+@router.post(
+    "/{project_id}/nodes/{node_id}/whats-missing",
+    response_model=SectionPassOut,
+)
+async def whats_missing(
+    project_id: int,
+    node_id: int,
+    user_id: int = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+) -> SectionPassOut:
+    return await _section_pass(db, user_id, project_id, node_id, whats_missing_section)

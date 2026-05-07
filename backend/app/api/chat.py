@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import SessionLocal, get_db
 from app.deps import require_auth
 from app.models.chat import Chat, ChatMessage
+from app.models.project import StyleProfile
 from app.services.model_gateway import get_gateway
 from app.services.rag_prompt import (
     SYSTEM_PROMPT,
@@ -35,6 +36,7 @@ from app.services.rag_prompt import (
     verify_citations,
 )
 from app.services.search import RetrievedChunk, hybrid_search
+from app.services.writing_passes import style_profile_for_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -179,6 +181,21 @@ async def post_message(
             messages.append({"role": m.role, "content": m.content})
     messages.append({"role": "user", "content": build_user_turn(body.content, hits)})
 
+    # 4. If this chat is project-scoped and a style profile exists, append it
+    # to the system prompt so drafts mimic the user's voice.
+    system_prompt = SYSTEM_PROMPT
+    if chat.project_id:
+        sp = (
+            await db.execute(
+                select(StyleProfile).where(
+                    StyleProfile.user_id == user_id,
+                    StyleProfile.project_id == chat.project_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if sp and sp.profile_md:
+            system_prompt = system_prompt + style_profile_for_prompt(sp.profile_md)
+
     gateway = get_gateway()
 
     async def event_stream():
@@ -208,7 +225,7 @@ async def post_message(
         accumulated: list[str] = []
         try:
             async for delta in gateway.stream_chat(
-                system=SYSTEM_PROMPT,
+                system=system_prompt,
                 messages=messages,
                 mode=body.mode,
                 max_tokens=2048,
