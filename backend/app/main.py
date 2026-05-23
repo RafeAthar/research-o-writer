@@ -21,10 +21,13 @@ def _warm_models() -> None:
         from app.services.embedder import get_embedder
         from app.services.reranker import get_reranker
 
-        logger.info("warming embedder…")
-        get_embedder()
-        logger.info("warming reranker…")
-        get_reranker()
+        s = get_settings()
+        if s.embedding_provider.strip().lower() == "local":
+            logger.info("warming embedder…")
+            get_embedder()
+        if s.reranker_provider.strip().lower() == "local":
+            logger.info("warming reranker…")
+            get_reranker()
         logger.info("model warm-up complete")
     except Exception:  # noqa: BLE001 — warm-up must never crash the server
         logger.exception("model warm-up failed; models will load lazily on first use")

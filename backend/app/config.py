@@ -44,9 +44,22 @@ class Settings(BaseSettings):
     anthropic_model_default: str = "claude-sonnet-4-6"
     anthropic_model_hard: str = "claude-opus-4-7"
 
+    # Embedding/reranking backends. "local" runs the models in-process (no
+    # network, full privacy, but ~4.5GB RAM). "voyage" offloads to the Voyage
+    # AI API — frees the RAM, sends text to a third party. Reranking also
+    # supports "off" (skip reranking, keep RRF fusion order).
+    embedding_provider: str = "local"  # local | voyage
+    reranker_provider: str = "local"  # local | voyage | off
+
     embedding_model: str = "BAAI/bge-m3"
     embedding_dim: int = 1024
     reranker_model: str = "BAAI/bge-reranker-v2-m3"
+
+    voyage_api_key: str = ""
+    # voyage-4 defaults to 1024 dims, matching embedding_dim — drop-in for the
+    # existing pgvector column. The 4-series shares one vector space.
+    voyage_embedding_model: str = "voyage-4"
+    voyage_reranker_model: str = "rerank-2.5"
 
     @property
     def cors_origin_list(self) -> list[str]:

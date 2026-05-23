@@ -57,6 +57,26 @@ personal-only design is also expensive to undo later.
 **Revisit when**: Claude pricing changes materially, or we need a privacy
 mode for sensitive sources.
 
+**Update (2026-05)** — embeddings/reranking are now **pluggable backends**,
+selected by `EMBEDDING_PROVIDER` / `RERANKER_PROVIDER`:
+
+- `local` (**default**) — unchanged: BGE-M3 + cross-encoder in-process. Full
+  privacy, no network, but ~4.5 GB RAM for both models. This is the path the
+  "avoid sending full books to the cloud" rationale above protects, so it stays
+  the default.
+- `voyage` — offloads to the Voyage AI API (`voyage-4` at 1024 dims, a drop-in
+  for the existing pgvector column; `rerank-2.5` for reranking). Frees the
+  local RAM, which makes the tool usable on **8 GB machines** where holding
+  both models alongside Docker + Next.js thrashes swap. Trade-off: chunk text
+  and queries are sent to a third party — a real reversal of the local-first
+  privacy stance, so it is **opt-in only**.
+- Reranking also accepts `off` (skip reranking, keep RRF fusion order) for the
+  leanest footprint.
+
+**Caveat**: Voyage and BGE vectors live in different vector spaces, so
+switching providers requires re-embedding existing sources (the versioned
+`embedding_model_version` column tracks which model produced each vector).
+
 ---
 
 ## 3. Library scale: design for ~100 books, headroom to 1,000
