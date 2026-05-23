@@ -21,7 +21,9 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000"
     # Preload the embedder + reranker at API startup (in a background thread) so
     # the first chat doesn't pay the model load/download cost mid-request.
-    warm_models_on_startup: bool = True
+    # Off by default: on low-RAM machines, holding models in the API process
+    # while the worker also loads them during ingest can exhaust memory.
+    warm_models_on_startup: bool = False
 
     postgres_host: str = "localhost"
     postgres_port: int = 5432
