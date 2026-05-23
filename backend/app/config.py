@@ -1,11 +1,16 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# The single source-of-truth .env lives at the repo root, regardless of the
+# working directory the backend is launched from (e.g. `cd backend && uvicorn`).
+_ROOT_ENV = Path(__file__).resolve().parents[2] / ".env"
+
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=str(_ROOT_ENV), extra="ignore")
 
     app_env: str = "dev"
     app_host: str = "0.0.0.0"

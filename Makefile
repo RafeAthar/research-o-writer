@@ -48,18 +48,23 @@ logs:
 ps:
 	docker compose ps
 
+# Load the repo-root .env into the environment for recipes that need it.
+# Backend config also reads it directly, but the frontend (Next.js) only sees
+# NEXT_PUBLIC_* vars that are present in its process environment.
+LOAD_ENV := set -a; [ -f .env ] && . ./.env; set +a;
+
 backend-dev:
-	cd backend && .venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+	$(LOAD_ENV) cd backend && .venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 frontend-dev:
-	cd frontend && npm run dev
+	$(LOAD_ENV) cd frontend && npm run dev
 
 migrate:
-	cd backend && .venv/bin/alembic upgrade head
+	$(LOAD_ENV) cd backend && .venv/bin/alembic upgrade head
 
 revision:
 	@if [ -z "$(m)" ]; then echo "Usage: make revision m='message'"; exit 1; fi
-	cd backend && .venv/bin/alembic revision --autogenerate -m "$(m)"
+	$(LOAD_ENV) cd backend && .venv/bin/alembic revision --autogenerate -m "$(m)"
 
 lint:
 	cd backend && .venv/bin/ruff check .
@@ -72,16 +77,16 @@ test:
 	cd backend && .venv/bin/pytest
 
 worker:
-	cd backend && .venv/bin/python -m app.workers.run_worker ingest embed
+	$(LOAD_ENV) cd backend && .venv/bin/python -m app.workers.run_worker ingest embed
 
 eval-ingest:
-	cd backend && .venv/bin/python scripts/upload_eval_articles.py --wait
+	$(LOAD_ENV) cd backend && .venv/bin/python scripts/upload_eval_articles.py --wait
 
 eval:
-	cd backend && .venv/bin/python -m app.eval.run --file eval_data/eval_set.json
+	$(LOAD_ENV) cd backend && .venv/bin/python -m app.eval.run --file eval_data/eval_set.json
 
 eval-chat:
-	cd backend && .venv/bin/python -m app.eval.run --file eval_data/eval_set.json --with-chat
+	$(LOAD_ENV) cd backend && .venv/bin/python -m app.eval.run --file eval_data/eval_set.json --with-chat
 
 reset:
 	docker compose down -v
