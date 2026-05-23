@@ -29,7 +29,18 @@ make up                      # postgres + redis + minio
 make migrate                 # alembic upgrade head
 make backend-dev             # FastAPI on :8000
 make frontend-dev            # Next.js on :3000
+make worker                  # RQ worker — REQUIRED to ingest uploaded sources
 ```
+
+You need **four** processes running for the full flow: infra (`make up`), the
+API (`make backend-dev`), the frontend (`make frontend-dev`), and the **worker**
+(`make worker`). Uploading a source returns immediately and enqueues a job; the
+worker is what parses, chunks, and embeds it — without it, sources stay stuck
+before `ready` and chat retrieval finds nothing.
+
+First use downloads the local models (~4.5GB: BGE-M3 embedder + bge-reranker)
+to the HuggingFace cache. The API preloads them at startup
+(`WARM_MODELS_ON_STARTUP`); the worker loads the embedder on its first job.
 
 The default `.env.example` points the backend at `localhost` so `make
 backend-dev` (uvicorn on your host) can reach the dockerised infra via the

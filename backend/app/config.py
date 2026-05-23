@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     app_default_user_id: int = 1
     max_upload_mb: int = 50
     cors_origins: str = "http://localhost:3000"
+    # Preload the embedder + reranker at API startup (in a background thread) so
+    # the first chat doesn't pay the model load/download cost mid-request.
+    warm_models_on_startup: bool = True
 
     postgres_host: str = "localhost"
     postgres_port: int = 5432
