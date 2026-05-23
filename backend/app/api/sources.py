@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.db import get_db
 from app.deps import require_auth
 from app.models.source import Chunk, Source, SourceStatus, SourceStructure
@@ -64,6 +65,9 @@ async def upload_source(
     data = await file.read()
     if not data:
         raise HTTPException(status_code=400, detail="empty file")
+    max_mb = get_settings().max_upload_mb
+    if len(data) > max_mb * 1024 * 1024:
+        raise HTTPException(status_code=413, detail=f"file exceeds {max_mb} MB limit")
     digest = sha256_hex(data)
 
     # De-dup by sha256 within the user's library.

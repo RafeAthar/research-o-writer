@@ -9,6 +9,7 @@ All Claude calls in the app go through this so we have one place to:
 from __future__ import annotations
 
 import logging
+import threading
 from collections.abc import AsyncIterator
 from typing import Literal
 
@@ -79,10 +80,13 @@ class ModelGateway:
 
 
 _gateway: ModelGateway | None = None
+_gateway_lock = threading.Lock()
 
 
 def get_gateway() -> ModelGateway:
     global _gateway
     if _gateway is None:
-        _gateway = ModelGateway()
+        with _gateway_lock:
+            if _gateway is None:
+                _gateway = ModelGateway()
     return _gateway

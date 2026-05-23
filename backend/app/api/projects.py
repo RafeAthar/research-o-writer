@@ -254,7 +254,7 @@ async def update_node(
         n.order_in_parent = body.order_in_parent
     if body.body_md is not None:
         n.body_md = body.body_md
-    if body.parent_id is not None or body.parent_id is None and "parent_id" in body.model_fields_set:
+    if "parent_id" in body.model_fields_set:
         n.parent_id = body.parent_id
     await db.commit()
     await db.refresh(n)

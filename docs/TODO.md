@@ -209,6 +209,11 @@ Convention:
 
 ## Cross-cutting / always-on
 
+- [ ] Chat/LLM rate limiting + per-user cost caps (full design lands in Phase 4.2
+      "Cost metering"; add a basic guard sooner if usage warrants)
+- [ ] pg_trgm (GIN trigram) index on `chunks.text` so exact-phrase ILIKE search
+      stays fast as the library grows
+- [ ] Graceful 503s when MinIO/object storage is unavailable on upload
 - [ ] Keep eval set up to date as new sources/queries appear
 - [ ] Re-read CONCEPT.md / PHASES.md / TECHNICAL_DECISIONS.md before starting each phase
 - [ ] Log every architectural revisit (when, why, what changed) in

@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     app_port: int = 8000
     app_auth_token: str = Field(default="dev-token", min_length=8)
     app_default_user_id: int = 1
+    max_upload_mb: int = 50
+    cors_origins: str = "http://localhost:3000"
 
     postgres_host: str = "localhost"
     postgres_port: int = 5432
@@ -35,6 +37,10 @@ class Settings(BaseSettings):
     embedding_model: str = "BAAI/bge-m3"
     embedding_dim: int = 1024
     reranker_model: str = "BAAI/bge-reranker-v2-m3"
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
     @property
     def database_url(self) -> str:

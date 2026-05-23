@@ -1,9 +1,15 @@
 SHELL := /bin/bash
 
-.PHONY: help up down logs ps backend-shell migrate revision lint test fmt frontend-dev backend-dev worker seed reset eval-ingest eval eval-chat
+# Backend virtualenv. All backend targets run through it so a global
+# uvicorn/alembic/pytest is never required.
+VENV := backend/.venv
+BIN := $(VENV)/bin
+
+.PHONY: help install install-backend install-frontend up down logs ps backend-shell migrate revision lint test fmt frontend-dev backend-dev worker seed reset eval-ingest eval eval-chat
 
 help:
 	@echo "Targets:"
+	@echo "  install        Install backend (venv) + frontend deps"
 	@echo "  up             Start postgres + redis + minio (docker-compose up -d)"
 	@echo "  down           Stop and remove containers"
 	@echo "  logs           Tail compose logs"
@@ -20,6 +26,16 @@ help:
 	@echo "  eval-chat      Run full eval including chat scoring (needs ANTHROPIC_API_KEY)"
 	@echo "  reset          Drop volumes (WARNING: wipes db, minio, redis)"
 
+install: install-backend install-frontend
+
+install-backend:
+	python3 -m venv $(VENV)
+	$(BIN)/pip install --upgrade pip
+	cd backend && ../$(BIN)/pip install -e ".[dev]"
+
+install-frontend:
+	cd frontend && npm install
+
 up:
 	docker compose up -d postgres redis minio minio-bootstrap
 
@@ -33,39 +49,39 @@ ps:
 	docker compose ps
 
 backend-dev:
-	cd backend && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+	cd backend && .venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 frontend-dev:
 	cd frontend && npm run dev
 
 migrate:
-	cd backend && alembic upgrade head
+	cd backend && .venv/bin/alembic upgrade head
 
 revision:
 	@if [ -z "$(m)" ]; then echo "Usage: make revision m='message'"; exit 1; fi
-	cd backend && alembic revision --autogenerate -m "$(m)"
+	cd backend && .venv/bin/alembic revision --autogenerate -m "$(m)"
 
 lint:
-	cd backend && ruff check .
+	cd backend && .venv/bin/ruff check .
 	cd frontend && npm run lint
 
 fmt:
-	cd backend && ruff format . && ruff check --fix .
+	cd backend && .venv/bin/ruff format . && .venv/bin/ruff check --fix .
 
 test:
-	cd backend && pytest
+	cd backend && .venv/bin/pytest
 
 worker:
-	cd backend && python -m app.workers.run_worker ingest embed
+	cd backend && .venv/bin/python -m app.workers.run_worker ingest embed
 
 eval-ingest:
-	cd backend && python scripts/upload_eval_articles.py --wait
+	cd backend && .venv/bin/python scripts/upload_eval_articles.py --wait
 
 eval:
-	cd backend && python -m app.eval.run --file eval_data/eval_set.json
+	cd backend && .venv/bin/python -m app.eval.run --file eval_data/eval_set.json
 
 eval-chat:
-	cd backend && python -m app.eval.run --file eval_data/eval_set.json --with-chat
+	cd backend && .venv/bin/python -m app.eval.run --file eval_data/eval_set.json --with-chat
 
 reset:
 	docker compose down -v
