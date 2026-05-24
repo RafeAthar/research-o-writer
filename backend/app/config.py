@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # The single source-of-truth .env lives at the repo root, regardless of the
@@ -49,7 +49,9 @@ class Settings(BaseSettings):
     # AI API — frees the RAM, sends text to a third party. Reranking also
     # supports "off" (skip reranking, keep RRF fusion order).
     embedding_provider: str = "local"  # local | voyage
-    reranker_provider: str = "local"  # local | voyage | off
+    # "off" by default: reranking is a quality boost, not a requirement, and the
+    # local cross-encoder costs ~2GB RAM. Set "local" or "voyage" to enable.
+    reranker_provider: str = "off"  # local | voyage | off
 
     embedding_model: str = "BAAI/bge-m3"
     embedding_dim: int = 1024
@@ -63,6 +65,15 @@ class Settings(BaseSettings):
     voyage_embedding_model: str = "voyage-3"
     voyage_output_dimension: int | None = None
     voyage_reranker_model: str = "rerank-2.5"
+
+    @field_validator("voyage_output_dimension", mode="before")
+    @classmethod
+    def _blank_to_none(cls, v: object) -> object:
+        # A blank line in .env (VOYAGE_OUTPUT_DIMENSION=) arrives as "" — treat
+        # it as unset rather than failing int parsing.
+        if isinstance(v, str) and v.strip() == "":
+            return None
+        return v
 
     @property
     def cors_origin_list(self) -> list[str]:
