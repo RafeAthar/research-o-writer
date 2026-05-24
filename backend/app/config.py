@@ -56,9 +56,12 @@ class Settings(BaseSettings):
     reranker_model: str = "BAAI/bge-reranker-v2-m3"
 
     voyage_api_key: str = ""
-    # voyage-4 defaults to 1024 dims, matching embedding_dim — drop-in for the
-    # existing pgvector column. The 4-series shares one vector space.
-    voyage_embedding_model: str = "voyage-4"
+    # voyage-3 is fixed at 1024 dims — matches embedding_dim, a drop-in for the
+    # existing pgvector column — and is covered by Voyage's 200M-token free tier
+    # (series 3 only; voyage-4 is NOT free). Leave voyage_output_dimension None
+    # so each model uses its native 1024 dims (voyage-3 rejects the override).
+    voyage_embedding_model: str = "voyage-3"
+    voyage_output_dimension: int | None = None
     voyage_reranker_model: str = "rerank-2.5"
 
     @property

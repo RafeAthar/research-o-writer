@@ -84,7 +84,10 @@ def _embed_voyage(texts: list[str], input_type: str) -> list[list[float]]:
             batch,
             model=s.voyage_embedding_model,
             input_type=input_type,
-            output_dimension=s.embedding_dim,
+            # None = the model's native dimension. voyage-3 is fixed at 1024
+            # (and rejects output_dimension); 3.5/large/4 default to 1024 too,
+            # so both match our pgvector column without forcing it.
+            output_dimension=s.voyage_output_dimension,
         )
         out.extend(resp.embeddings)
     return out

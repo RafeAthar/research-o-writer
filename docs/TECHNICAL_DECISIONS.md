@@ -64,12 +64,15 @@ selected by `EMBEDDING_PROVIDER` / `RERANKER_PROVIDER`:
   privacy, no network, but ~4.5 GB RAM for both models. This is the path the
   "avoid sending full books to the cloud" rationale above protects, so it stays
   the default.
-- `voyage` — offloads to the Voyage AI API (`voyage-4` at 1024 dims, a drop-in
-  for the existing pgvector column; `rerank-2.5` for reranking). Frees the
-  local RAM, which makes the tool usable on **8 GB machines** where holding
-  both models alongside Docker + Next.js thrashes swap. Trade-off: chunk text
-  and queries are sent to a third party — a real reversal of the local-first
-  privacy stance, so it is **opt-in only**.
+- `voyage` — offloads to the Voyage AI API (`voyage-3`, fixed 1024 dims, a
+  drop-in for the existing pgvector column; `rerank-2.5` for reranking). Frees
+  the local RAM, which makes the tool usable on **8 GB machines** where holding
+  both models alongside Docker + Next.js thrashes swap. We default to **voyage-3
+  specifically** because Voyage's **200M-token free tier covers series 3 only**
+  (voyage-4 is paid). Trade-off: chunk text and queries are sent to a third
+  party — a real reversal of the local-first privacy stance, so it is
+  **opt-in only**. Note the free account is throttled to 3 RPM / 10K TPM until
+  a payment method is added; bulk ingestion is slow until then.
 - Reranking also accepts `off` (skip reranking, keep RRF fusion order) for the
   leanest footprint.
 
