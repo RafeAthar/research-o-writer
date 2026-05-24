@@ -1,12 +1,12 @@
 """Sentence embedding service with a pluggable backend.
 
 EMBEDDING_PROVIDER selects the backend:
-  - "local"  (default): BAAI/bge-m3 (or EMBEDDING_MODEL) loaded in-process.
+  - "voyage" (default): Voyage AI REST API (VOYAGE_EMBEDDING_MODEL, default
+               voyage-3 at 1024 dims). No local model / no torch RAM; text is
+               sent to Voyage. Requires VOYAGE_API_KEY.
+  - "local":            BAAI/bge-m3 (or EMBEDDING_MODEL) loaded in-process.
                First call downloads ~2GB to the HuggingFace cache; no network
                at query time after that.
-  - "voyage":           Voyage AI API (VOYAGE_EMBEDDING_MODEL, default voyage-4
-               at 1024 dims). No local model / no torch RAM; text is sent to
-               Voyage. Requires VOYAGE_API_KEY.
 
 Both produce unit-normalized 1024-dim vectors, so they're interchangeable at
 the pgvector-column level — but their vector spaces differ, so switching
@@ -20,9 +20,9 @@ from functools import lru_cache
 from typing import TYPE_CHECKING
 
 from app.config import get_settings
+from app.services.voyage import voyage_post
 
 if TYPE_CHECKING:
-    import voyageai
     from sentence_transformers import SentenceTransformer
 
 logger = logging.getLogger(__name__)
@@ -43,16 +43,6 @@ def get_embedder() -> SentenceTransformer:
     name = get_settings().embedding_model
     logger.info("loading embedding model: %s", name)
     return SentenceTransformer(name)
-
-
-@lru_cache(maxsize=1)
-def _voyage_client() -> voyageai.Client:
-    import voyageai
-
-    s = get_settings()
-    if not s.voyage_api_key:
-        raise RuntimeError("EMBEDDING_PROVIDER=voyage requires VOYAGE_API_KEY")
-    return voyageai.Client(api_key=s.voyage_api_key)
 
 
 def model_version() -> str:
@@ -76,20 +66,22 @@ def _embed_local(texts: list[str], batch_size: int) -> list[list[float]]:
 
 def _embed_voyage(texts: list[str], input_type: str) -> list[list[float]]:
     s = get_settings()
-    client = _voyage_client()
     out: list[list[float]] = []
     for i in range(0, len(texts), _VOYAGE_BATCH):
         batch = texts[i : i + _VOYAGE_BATCH]
-        resp = client.embed(
-            batch,
-            model=s.voyage_embedding_model,
-            input_type=input_type,
-            # None = the model's native dimension. voyage-3 is fixed at 1024
-            # (and rejects output_dimension); 3.5/large/4 default to 1024 too,
-            # so both match our pgvector column without forcing it.
-            output_dimension=s.voyage_output_dimension,
-        )
-        out.extend(resp.embeddings)
+        payload: dict = {
+            "input": batch,
+            "model": s.voyage_embedding_model,
+            "input_type": input_type,
+        }
+        # Only send output_dimension when explicitly set: voyage-3 is fixed at
+        # 1024 and rejects the field; 3.5/large/4 default to 1024 too, so both
+        # match our pgvector column without forcing it.
+        if s.voyage_output_dimension is not None:
+            payload["output_dimension"] = s.voyage_output_dimension
+        data = voyage_post("/embeddings", payload)["data"]
+        data.sort(key=lambda d: d["index"])  # preserve input order
+        out.extend(d["embedding"] for d in data)
     return out
 
 

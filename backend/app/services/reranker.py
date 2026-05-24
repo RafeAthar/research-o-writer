@@ -1,11 +1,11 @@
 """Reranker with a pluggable backend.
 
 RERANKER_PROVIDER selects the backend:
-  - "local" (default): BAAI/bge-reranker-v2-m3 cross-encoder, loaded in-process
+  - "off" (default):   Skip reranking; preserve the caller's input order.
+  - "local":           BAAI/bge-reranker-v2-m3 cross-encoder, loaded in-process
               (~2GB RAM). First call downloads the model.
-  - "voyage":          Voyage AI rerank API (VOYAGE_RERANKER_MODEL, default
+  - "voyage":          Voyage AI rerank REST API (VOYAGE_RERANKER_MODEL, default
               rerank-2.5). No local model; candidate text is sent to Voyage.
-  - "off":             Skip reranking; preserve the caller's input order.
 """
 
 from __future__ import annotations
@@ -15,9 +15,9 @@ from functools import lru_cache
 from typing import TYPE_CHECKING
 
 from app.config import get_settings
+from app.services.voyage import voyage_post
 
 if TYPE_CHECKING:
-    import voyageai
     from sentence_transformers import CrossEncoder
 
 logger = logging.getLogger(__name__)
@@ -36,16 +36,6 @@ def get_reranker() -> CrossEncoder:
     return CrossEncoder(name)
 
 
-@lru_cache(maxsize=1)
-def _voyage_client() -> voyageai.Client:
-    import voyageai
-
-    s = get_settings()
-    if not s.voyage_api_key:
-        raise RuntimeError("RERANKER_PROVIDER=voyage requires VOYAGE_API_KEY")
-    return voyageai.Client(api_key=s.voyage_api_key)
-
-
 def _rerank_local(query: str, candidates: list[tuple[int, str]]) -> list[tuple[int, float]]:
     model = get_reranker()
     pairs = [(query, text) for _id, text in candidates]
@@ -57,11 +47,11 @@ def _rerank_local(query: str, candidates: list[tuple[int, str]]) -> list[tuple[i
 
 def _rerank_voyage(query: str, candidates: list[tuple[int, str]]) -> list[tuple[int, float]]:
     s = get_settings()
-    client = _voyage_client()
     docs = [text for _id, text in candidates]
-    resp = client.rerank(query, docs, model=s.voyage_reranker_model)
-    # results carry .index (into docs) and .relevance_score, sorted desc.
-    return [(candidates[r.index][0], float(r.relevance_score)) for r in resp.results]
+    payload = {"query": query, "documents": docs, "model": s.voyage_reranker_model}
+    data = voyage_post("/rerank", payload)["data"]
+    # each result carries "index" (into docs) and "relevance_score", sorted desc.
+    return [(candidates[r["index"]][0], float(r["relevance_score"])) for r in data]
 
 
 def rerank(query: str, candidates: list[tuple[int, str]]) -> list[tuple[int, float]]:
