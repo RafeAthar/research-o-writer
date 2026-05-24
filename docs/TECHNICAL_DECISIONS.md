@@ -58,23 +58,26 @@ personal-only design is also expensive to undo later.
 mode for sensitive sources.
 
 **Update (2026-05)** — embeddings/reranking are now **pluggable backends**,
-selected by `EMBEDDING_PROVIDER` / `RERANKER_PROVIDER`:
+selected by `EMBEDDING_PROVIDER` / `RERANKER_PROVIDER`. The shipped defaults are
+**`EMBEDDING_PROVIDER=voyage`** and **`RERANKER_PROVIDER=off`** — chosen for the
+builder's 8 GB machine, where loading BGE-M3 + the cross-encoder alongside
+Docker + Next.js thrashes swap. This is a deliberate departure from the
+local-first default above: it trades the "books never leave the machine"
+guarantee for usable RAM, and requires a `VOYAGE_API_KEY`. Set
+`EMBEDDING_PROVIDER=local` to restore the fully-local, private path.
 
-- `local` (**default**) — unchanged: BGE-M3 + cross-encoder in-process. Full
-  privacy, no network, but ~4.5 GB RAM for both models. This is the path the
-  "avoid sending full books to the cloud" rationale above protects, so it stays
-  the default.
-- `voyage` — offloads to the Voyage AI API (`voyage-3`, fixed 1024 dims, a
-  drop-in for the existing pgvector column; `rerank-2.5` for reranking). Frees
-  the local RAM, which makes the tool usable on **8 GB machines** where holding
-  both models alongside Docker + Next.js thrashes swap. We default to **voyage-3
-  specifically** because Voyage's **200M-token free tier covers series 3 only**
-  (voyage-4 is paid). Trade-off: chunk text and queries are sent to a third
-  party — a real reversal of the local-first privacy stance, so it is
-  **opt-in only**. Note the free account is throttled to 3 RPM / 10K TPM until
-  a payment method is added; bulk ingestion is slow until then.
-- Reranking also accepts `off` (skip reranking, keep RRF fusion order) for the
-  leanest footprint.
+- `local` — BGE-M3 + cross-encoder in-process. Full privacy, no network, but
+  ~4.5 GB RAM for both models. The path the "avoid sending full books to the
+  cloud" rationale above protects.
+- `voyage` (**embedding default**) — offloads to the Voyage AI API (`voyage-3`,
+  fixed 1024 dims, a drop-in for the existing pgvector column; `rerank-2.5` for
+  reranking). Frees the local RAM. We use **voyage-3 specifically** because
+  Voyage's **200M-token free tier covers series 3 only** (voyage-4 is paid).
+  Trade-off: chunk text and queries are sent to a third party. Note a free
+  account with no payment method is throttled to 3 RPM / 10K TPM; adding a card
+  lifts that while series 3 stays free up to 200M tokens.
+- `off` (**reranker default**) — skip reranking, keep RRF fusion order, for the
+  leanest footprint. Reranking is a quality boost, not a requirement.
 
 **Caveat**: Voyage and BGE vectors live in different vector spaces, so
 switching providers requires re-embedding existing sources (the versioned

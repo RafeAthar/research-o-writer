@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     # network, full privacy, but ~4.5GB RAM). "voyage" offloads to the Voyage
     # AI API — frees the RAM, sends text to a third party. Reranking also
     # supports "off" (skip reranking, keep RRF fusion order).
-    embedding_provider: str = "local"  # local | voyage
+    embedding_provider: str = "voyage"  # local | voyage
     # "off" by default: reranking is a quality boost, not a requirement, and the
     # local cross-encoder costs ~2GB RAM. Set "local" or "voyage" to enable.
     reranker_provider: str = "off"  # local | voyage | off
