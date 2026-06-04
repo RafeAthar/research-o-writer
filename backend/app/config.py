@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     anthropic_model_default: str = "claude-sonnet-4-6"
     anthropic_model_hard: str = "claude-opus-4-7"
+    # Cheap fast model used for ancillary calls (auto-title, follow-up suggestions).
+    anthropic_model_fast: str = "claude-haiku-4-5-20251001"
 
     # Embedding/reranking backends. "local" runs the models in-process (no
     # network, full privacy, but ~4.5GB RAM). "voyage" offloads to the Voyage

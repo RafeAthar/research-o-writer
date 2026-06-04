@@ -113,6 +113,8 @@ export interface Chat {
   project_id: number | null;
   created_at: string;
   updated_at: string;
+  last_message_preview: string | null;
+  message_count: number;
 }
 
 export interface ChatMessage {
@@ -120,6 +122,8 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   citations: ChatCitation[];
+  suggestions: string[] | null;
+  stop_reason: string | null;
   model: string | null;
   error: string | null;
   created_at: string;

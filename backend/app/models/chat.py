@@ -40,6 +40,11 @@ class ChatMessage(Base, TimestampMixin):
     role: Mapped[str] = mapped_column(String(16), nullable=False)  # "user" | "assistant"
     content: Mapped[str] = mapped_column(Text, nullable=False, default="")
     citations: Mapped[list[dict]] = mapped_column(JSONB, default=list, nullable=False)
+    # Follow-up question chips generated after a successful assistant turn.
+    suggestions: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
+    # Anthropic stop_reason for assistant turns ("end_turn" | "max_tokens" |
+    # "client_abort" | ...). Used to surface a Continue affordance.
+    stop_reason: Mapped[str | None] = mapped_column(String(32), nullable=True)
     model: Mapped[str | None] = mapped_column(String(128), nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
 

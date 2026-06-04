@@ -93,6 +93,21 @@ Convention:
 - [ ] Multi-source / library-wide chat
 - [ ] Project-scoped chat (only sources attached to a project)
 
+#### 1.6.x Chat UX polish (2026-06-04)
+
+- [x] PATCH /chats/{id} (rename + retarget scope/sources/project)
+- [x] DELETE /chats/{id} and DELETE /chats/{id}/messages/{mid}
+- [x] Auto-title first turn via Haiku (`anthropic_model_fast`)
+- [x] Stop button + AbortSignal; persist partial assistant on client abort
+- [x] Regenerate / retry last assistant turn
+- [x] Markdown rendering with inline `[Pn]` citation chips + hover preview
+- [x] Per-chat live scope/sources/k controls (persist via PATCH)
+- [x] Citation card "+" menu: copy markdown · save to quote shelf · pin to outline node
+- [x] Copy message + export thread to Markdown (Pandoc-friendly footnotes)
+- [x] Follow-up question suggestions after each assistant turn
+- [x] Continue affordance when stop_reason=max_tokens
+- [x] Chat list polish: last-message preview, source count, relative time, inline rename, delete
+
 ### 1.7 Source viewer
 
 - [ ] PDF viewer with PDF.js

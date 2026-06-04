@@ -54,6 +54,30 @@ export default function ChatListPage() {
     }
   }, [scope, pickedSourceIds, creating, router]);
 
+  const onRename = useCallback(async (chatId: number, title: string) => {
+    try {
+      await api(`/api/v1/chats/${chatId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ title }),
+      });
+      setChats((prev) =>
+        prev?.map((c) => (c.id === chatId ? { ...c, title } : c)) ?? prev,
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
+
+  const onDelete = useCallback(async (chatId: number) => {
+    if (!confirm("Delete this chat and all its messages?")) return;
+    try {
+      await api(`/api/v1/chats/${chatId}`, { method: "DELETE" });
+      setChats((prev) => prev?.filter((c) => c.id !== chatId) ?? prev);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
+
   return (
     <div className="mx-auto grid max-w-5xl grid-cols-1 gap-6 p-6 md:grid-cols-[1fr_320px]">
       <div>
@@ -72,22 +96,12 @@ export default function ChatListPage() {
         {chats && chats.length > 0 && (
           <ul className="space-y-2">
             {chats.map((c) => (
-              <li key={c.id}>
-                <Link
-                  href={`/chat/${c.id}`}
-                  className="block rounded border border-neutral-200 p-3 hover:border-neutral-400 dark:border-neutral-800"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium">{c.title}</span>
-                    <span className="text-xs uppercase text-neutral-500">{c.scope}</span>
-                  </div>
-                  {c.source_ids.length > 0 && (
-                    <div className="mt-1 text-xs text-neutral-500">
-                      {c.source_ids.length} source(s)
-                    </div>
-                  )}
-                </Link>
-              </li>
+              <ChatRow
+                key={c.id}
+                chat={c}
+                onRename={onRename}
+                onDelete={onDelete}
+              />
             ))}
           </ul>
         )}
@@ -138,4 +152,106 @@ export default function ChatListPage() {
       </aside>
     </div>
   );
+}
+
+function ChatRow({
+  chat,
+  onRename,
+  onDelete,
+}: {
+  chat: Chat;
+  onRename: (id: number, title: string) => void;
+  onDelete: (id: number) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState(chat.title);
+
+  const commit = useCallback(() => {
+    const t = title.trim();
+    if (t && t !== chat.title) onRename(chat.id, t);
+    else setTitle(chat.title);
+    setEditing(false);
+  }, [title, chat.id, chat.title, onRename]);
+
+  return (
+    <li className="rounded border border-neutral-200 p-3 hover:border-neutral-400 dark:border-neutral-800">
+      <div className="flex items-center justify-between gap-2">
+        {editing ? (
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commit();
+              if (e.key === "Escape") {
+                setTitle(chat.title);
+                setEditing(false);
+              }
+            }}
+            autoFocus
+            className="flex-1 rounded border border-neutral-300 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+          />
+        ) : (
+          <Link
+            href={`/chat/${chat.id}`}
+            className="flex-1 truncate font-medium"
+            title={chat.title}
+          >
+            {chat.title}
+          </Link>
+        )}
+        <div className="flex items-center gap-1 text-xs">
+          <span className="text-neutral-500 uppercase">{chat.scope}</span>
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              setEditing(true);
+            }}
+            className="rounded px-1.5 py-0.5 text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            title="Rename"
+            aria-label="Rename chat"
+          >
+            ✎
+          </button>
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              onDelete(chat.id);
+            }}
+            className="rounded px-1.5 py-0.5 text-neutral-500 hover:bg-red-100 hover:text-red-700 dark:hover:bg-red-950/40"
+            title="Delete"
+            aria-label="Delete chat"
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+      <div className="mt-1 flex items-center justify-between gap-2 text-xs text-neutral-500">
+        <span className="truncate">
+          {chat.last_message_preview || (
+            <span className="italic">No messages yet</span>
+          )}
+        </span>
+        <span className="shrink-0 tabular-nums">
+          {chat.message_count} msg · {formatRelative(chat.updated_at)}
+          {chat.source_ids.length > 0 && ` · ${chat.source_ids.length} src`}
+        </span>
+      </div>
+    </li>
+  );
+}
+
+function formatRelative(iso: string): string {
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return "";
+  const diff = Date.now() - t;
+  const s = Math.floor(diff / 1000);
+  if (s < 60) return "just now";
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  const d = Math.floor(h / 24);
+  if (d < 30) return `${d}d`;
+  return new Date(t).toLocaleDateString();
 }
