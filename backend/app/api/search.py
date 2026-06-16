@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
 from app.deps import require_auth
+from app.services.scope import resolve_source_ids
 from app.services.search import (
     RetrievedChunk,
     exact_phrase_search,
@@ -21,6 +22,9 @@ class SearchRequest(BaseModel):
     query: str = Field(..., min_length=1)
     mode: str = Field(default="hybrid", pattern="^(hybrid|semantic|lexical|exact)$")
     source_ids: list[int] | None = None
+    # When set, confine the search to this project's shelf (an empty shelf
+    # returns no hits). Takes precedence over source_ids.
+    project_id: int | None = None
     k: int = Field(default=10, ge=1, le=100)
     rerank: bool = True
 
@@ -65,27 +69,40 @@ async def search(
     user_id: int = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> SearchResponse:
+    scope = "project" if req.project_id is not None else "sources"
+    source_ids = await resolve_source_ids(
+        db,
+        user_id=user_id,
+        scope=scope,
+        source_ids=req.source_ids,
+        project_id=req.project_id,
+    )
+    # Empty list == "search nothing" (e.g. an empty project shelf); short-circuit
+    # since the search helpers treat a falsy source_ids as "no filter".
+    if source_ids == []:
+        return SearchResponse(hits=[])
+
     if req.mode == "hybrid":
         hits = await hybrid_search(
             db,
             user_id=user_id,
             query=req.query,
             k_final=req.k,
-            source_ids=req.source_ids,
+            source_ids=source_ids,
             rerank=req.rerank,
         )
     else:
         if req.mode == "semantic":
             raw = await semantic_search(
-                db, user_id=user_id, query=req.query, k=req.k, source_ids=req.source_ids
+                db, user_id=user_id, query=req.query, k=req.k, source_ids=source_ids
             )
         elif req.mode == "lexical":
             raw = await lexical_search(
-                db, user_id=user_id, query=req.query, k=req.k, source_ids=req.source_ids
+                db, user_id=user_id, query=req.query, k=req.k, source_ids=source_ids
             )
         else:
             raw = await exact_phrase_search(
-                db, user_id=user_id, phrase=req.query, k=req.k, source_ids=req.source_ids
+                db, user_id=user_id, phrase=req.query, k=req.k, source_ids=source_ids
             )
         hits = [
             RetrievedChunk(

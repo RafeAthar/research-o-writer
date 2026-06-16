@@ -44,6 +44,7 @@ Convention:
 - [ ] `projects` (a book/article being written)
 - [ ] `outline_nodes` (tree per project)
 - [ ] `evidence_cards` (link outline_node ↔ chunk/highlight)
+- [x] `project_sources` (M2M project ↔ library source: a project's source shelf)
 - [ ] Migrations tooling (Alembic) wired up
 
 ### 1.3 Ingestion pipeline
@@ -91,7 +92,7 @@ Convention:
 - [ ] Post-process to verify every cited chunk_id is real
 - [ ] Single-source chat
 - [ ] Multi-source / library-wide chat
-- [ ] Project-scoped chat (only sources attached to a project)
+- [x] Project-scoped chat (only sources attached to a project, via `project_sources`; empty shelf retrieves nothing)
 
 #### 1.6.x Chat UX polish (2026-06-04)
 
@@ -125,6 +126,7 @@ Convention:
 ### 1.9 Outline & evidence
 
 - [ ] Project create / list / delete
+- [x] Project source shelf UI (attach/detach library sources at `/projects/{id}/sources`; auto-attach on evidence pin)
 - [ ] Outline tree editor (flat in Phase 1; hierarchical comes in Phase 2)
 - [ ] "Add evidence to this node" — drag from chat result, source viewer, or quote shelf
 - [ ] Evidence card displays: quote text, citation, link back to source

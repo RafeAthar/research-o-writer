@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.sources import SourceOut
 from app.db import get_db
 from app.deps import require_auth
 from app.models.project import (
@@ -23,6 +24,7 @@ from app.models.project import (
     OutlineNode,
     OutlineNodeVersion,
     Project,
+    ProjectSource,
     StyleProfile,
 )
 from app.models.source import Source
@@ -137,6 +139,92 @@ async def delete_project(
 ) -> None:
     p = await _own_project(db, user_id, project_id)
     await db.delete(p)
+    await db.commit()
+
+
+# ---------- Project source shelf ----------
+
+
+class AttachSources(BaseModel):
+    source_ids: list[int] = Field(..., min_length=1)
+
+
+async def _attach_source(db: AsyncSession, user_id: int, project_id: int, source_id: int) -> None:
+    """Idempotently link a source the user owns onto a project's shelf.
+
+    Verifies ownership of the source; silently no-ops if already attached.
+    Caller is responsible for committing.
+    """
+    src = (
+        await db.execute(
+            select(Source.id).where(Source.id == source_id, Source.user_id == user_id)
+        )
+    ).scalar_one_or_none()
+    if src is None:
+        raise HTTPException(404, f"source {source_id} not found")
+    exists = (
+        await db.execute(
+            select(ProjectSource.id).where(
+                ProjectSource.project_id == project_id,
+                ProjectSource.source_id == source_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if exists is None:
+        db.add(ProjectSource(project_id=project_id, source_id=source_id, user_id=user_id))
+
+
+@router.get("/{project_id}/sources", response_model=list[SourceOut])
+async def list_project_sources(
+    project_id: int,
+    user_id: int = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+) -> list[SourceOut]:
+    await _own_project(db, user_id, project_id)
+    rows = (
+        await db.execute(
+            select(Source)
+            .join(ProjectSource, ProjectSource.source_id == Source.id)
+            .where(ProjectSource.project_id == project_id)
+            .order_by(Source.title)
+        )
+    ).scalars().all()
+    return [SourceOut.model_validate(r) for r in rows]
+
+
+@router.post("/{project_id}/sources", response_model=list[SourceOut], status_code=201)
+async def attach_project_sources(
+    project_id: int,
+    body: AttachSources,
+    user_id: int = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+) -> list[SourceOut]:
+    await _own_project(db, user_id, project_id)
+    for source_id in dict.fromkeys(body.source_ids):
+        await _attach_source(db, user_id, project_id, source_id)
+    await db.commit()
+    return await list_project_sources(project_id, user_id=user_id, db=db)
+
+
+@router.delete("/{project_id}/sources/{source_id}", status_code=204)
+async def detach_project_source(
+    project_id: int,
+    source_id: int,
+    user_id: int = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    await _own_project(db, user_id, project_id)
+    link = (
+        await db.execute(
+            select(ProjectSource).where(
+                ProjectSource.project_id == project_id,
+                ProjectSource.source_id == source_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if link is None:
+        raise HTTPException(404, "source not on this project's shelf")
+    await db.delete(link)
     await db.commit()
 
 
@@ -358,6 +446,9 @@ async def create_evidence(
         order_in_node=body.order_in_node,
     )
     db.add(ec)
+    # Pinning evidence from a source auto-attaches it to the project's shelf so
+    # the shelf and the project's cited sources stay consistent.
+    await _attach_source(db, user_id, project_id, body.source_id)
     await db.commit()
     await db.refresh(ec)
     return EvidenceOut.model_validate(ec)

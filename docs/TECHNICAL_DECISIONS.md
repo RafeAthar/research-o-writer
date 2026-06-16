@@ -233,6 +233,23 @@ books and ingesting new ones without manual upload. Acceptable for now.
 8. Post-process: verify every citation in the answer resolves to a real
    chunk id; reject/regenerate otherwise.
 
+**Update (2026-06) — project source shelves.** Retrieval can be scoped to a
+**project's own set of sources**, not just the whole library. Each project has a
+many-to-many shelf (`project_sources`, one row per project↔source link) drawn
+from the library — a reference, never a copy, so nothing is re-embedded and
+detaching only drops the link. Resolution lives in `services/scope.py`
+(`resolve_source_ids`), shared by chat (`scope="project"`) and search
+(`project_id` on the request): `library → None` (search everything),
+`sources → explicit list`, `project → the shelf`. Key choices:
+
+- **Empty shelf ⇒ retrieve nothing**, never a library fallback. The resolver
+  returns `[]` (distinct from `None`); callers short-circuit before
+  `hybrid_search`, which treats a falsy `source_ids` as "no filter".
+- **Pinning evidence auto-attaches** its source to the shelf, keeping the shelf
+  and a project's cited sources consistent.
+- The retrieval *engine* is unchanged — `hybrid_search(..., source_ids=…)`
+  already filtered to a set; this only feeds it the right set.
+
 ---
 
 ## 10. Evaluation

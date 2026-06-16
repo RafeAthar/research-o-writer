@@ -36,6 +36,7 @@ from app.services.rag_prompt import (
     build_user_turn,
     verify_citations,
 )
+from app.services.scope import resolve_source_ids
 from app.services.search import RetrievedChunk, hybrid_search
 from app.services.writing_passes import style_profile_for_prompt
 
@@ -282,15 +283,27 @@ async def post_message(
             chat.title = new_title
             await db.commit()
 
-    # 2. Retrieve passages.
-    source_ids: list[int] | None = chat.source_ids if chat.source_ids else None
-    hits = await hybrid_search(
+    # 2. Retrieve passages, scoped per the chat's mode. A project-scoped chat
+    #    is confined to its shelf; an empty shelf resolves to [] (search
+    #    nothing) so we skip retrieval entirely rather than fall back to the
+    #    whole library.
+    source_ids = await resolve_source_ids(
         db,
         user_id=user_id,
-        query=body.content,
-        k_final=body.k,
-        source_ids=source_ids,
+        scope=chat.scope,
+        source_ids=chat.source_ids,
+        project_id=chat.project_id,
     )
+    if source_ids == []:
+        hits = []
+    else:
+        hits = await hybrid_search(
+            db,
+            user_id=user_id,
+            query=body.content,
+            k_final=body.k,
+            source_ids=source_ids,
+        )
 
     # 3. Build prompt + load conversation history (excluding the freshly-persisted user msg
     # — we'll add it last so the model sees it with the passages attached).

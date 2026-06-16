@@ -5,6 +5,7 @@ from app.models.project import (
     OutlineNode,
     OutlineNodeVersion,
     Project,
+    ProjectSource,
     StyleProfile,
 )
 from app.models.source import Chunk, Source, SourceFormat, SourceStatus, SourceStructure
@@ -19,6 +20,7 @@ __all__ = [
     "OutlineNode",
     "OutlineNodeVersion",
     "Project",
+    "ProjectSource",
     "QuoteShelfItem",
     "Source",
     "SourceFormat",

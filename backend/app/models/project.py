@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import ForeignKey, Integer, String, Text
+from sqlalchemy import ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -23,6 +23,33 @@ class Project(Base, TimestampMixin):
 
     nodes: Mapped[list[OutlineNode]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
+    )
+
+
+class ProjectSource(Base, TimestampMixin):
+    """Membership of a library source on a project's shelf.
+
+    A project's retrieval (chat/search in ``scope="project"``) is confined to
+    the sources linked here. This is a reference, not a copy: the source stays
+    in the library and its chunks/embeddings are shared — detaching only removes
+    the link.
+    """
+
+    __tablename__ = "project_sources"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    source_id: Mapped[int] = mapped_column(
+        ForeignKey("sources.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    __table_args__ = (
+        UniqueConstraint("project_id", "source_id", name="uq_project_sources_project_source"),
     )
 
 

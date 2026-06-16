@@ -54,10 +54,10 @@ ps:
 LOAD_ENV := set -a; [ -f .env ] && . ./.env; set +a;
 
 backend-dev:
-	$(LOAD_ENV) cd backend && .venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+	$(LOAD_ENV) cd backend && .venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port $${APP_PORT:-8000}
 
 frontend-dev:
-	$(LOAD_ENV) cd frontend && npm run dev
+	$(LOAD_ENV) cd frontend && npm run dev -- -p $${FRONTEND_PORT:-3000}
 
 migrate:
 	$(LOAD_ENV) cd backend && .venv/bin/alembic upgrade head

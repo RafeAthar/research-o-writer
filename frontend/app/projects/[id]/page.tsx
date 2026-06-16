@@ -219,6 +219,12 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
           </button>
         </div>
         <Link
+          href={`/projects/${projectId}/sources`}
+          className="mb-1 block w-full rounded border border-neutral-300 px-2 py-1 text-center text-xs hover:bg-neutral-200 dark:border-neutral-700 dark:hover:bg-neutral-800"
+        >
+          Sources
+        </Link>
+        <Link
           href={`/projects/${projectId}/coverage`}
           className="mb-1 block w-full rounded border border-neutral-300 px-2 py-1 text-center text-xs hover:bg-neutral-200 dark:border-neutral-700 dark:hover:bg-neutral-800"
         >
